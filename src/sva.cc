@@ -143,7 +143,9 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 
 		RTLIL::Process *rtlil_proc = netlist.canvas->addProcess(netlist.new_id());
 		transfer_attrs(netlist, statement, rtlil_proc);
+#ifndef SLANG_MUX_LOWERING
 		procedure.copy_case_tree_into(rtlil_proc->root_case);
+#endif
 	} else {
 		// No clocking
 		ProceduralContext procedure(netlist, ProcessTiming::implicit);
@@ -151,7 +153,9 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 
 		RTLIL::Process *rtlil_proc = netlist.canvas->addProcess(netlist.new_id());
 		transfer_attrs(netlist, statement, rtlil_proc);
+#ifndef SLANG_MUX_LOWERING
 		procedure.copy_case_tree_into(rtlil_proc->root_case);
+#endif
 	}
 }
 

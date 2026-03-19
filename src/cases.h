@@ -78,6 +78,17 @@ struct ValuePattern
 				return false;
 		return true;
 	}
+
+	ir::Value to_value() const
+	{
+		ir::Value v;
+		v.reserve(bits.size());
+		for (auto &b : bits) {
+			log_assert(!b.is_wildcard());
+			v.append(b.net);
+		}
+		return v;
+	}
 };
 
 // Lower a ValuePattern to an RTLIL::SigSpec (wildcards become RTLIL::Sa)
