@@ -17,6 +17,7 @@
 #include "slang/ast/EvalContext.h"
 #include "slang/ast/Scope.h"
 #include "slang/ast/SemanticFacts.h"
+#include "slang/ast/expressions/Operator.h"
 #include "slang/ast/symbols/CompilationUnitSymbols.h"
 #include "slang/diagnostics/Diagnostics.h"
 #include "slang/numeric/ConstantValue.h"
@@ -406,9 +407,12 @@ struct RTLILBuilder {
 	ir::Value Neg(ir::Value a, bool signed_);
 	ir::Value Not(ir::Value a);
 
-	ir::Value Unop(RTLIL::IdString op, ir::Value a, bool a_signed, int y_width);
-	ir::Value Biop(RTLIL::IdString op, ir::Value a, ir::Value b,
-				 bool a_signed, bool b_signed, int y_width);
+	ir::Value Unop(ast::UnaryOperator op, ir::Value a, bool a_signed, uint64_t y_width);
+	ir::Value UnopInternal(RTLIL::IdString op, ir::Value a, bool a_signed, uint64_t y_width);
+	ir::Value Biop(ast::BinaryOperator op, ir::Value a, ir::Value b,
+				 bool a_signed, bool b_signed, uint64_t y_width);
+	ir::Value BiopInternal(
+				RTLIL::IdString op, ir::Value a, ir::Value b, bool a_signed, bool b_signed, uint64_t y_width);
 
 	ir::Value CountOnes(ir::Value sig, int result_width);
 	ir::Value Clog2(ir::Value sig, int result_width);
