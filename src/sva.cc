@@ -79,12 +79,12 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 		// If we are the sole statement in a block, use the block's label
 		cell_name = netlist.id(*block);
 	} else {
-		cell_name = netlist.new_id();
+		cell_name = netlist.backend->new_id();
 	}
 
 	ir::Net a = netlist.ReduceBool(procedural.eval.sva(simple_assertion.expr));
 
-	auto cell = netlist.canvas->addCell(cell_name, ID($check));
+	auto cell = netlist.backend->canvas->addCell(cell_name, ID($check));
 	procedural.set_effects_trigger(cell);
 	cell->setParam(ID::FLAVOR, flavor);
 	cell->setParam(ID::FORMAT, std::string(""));
@@ -141,7 +141,7 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 		ProceduralContext procedure(netlist, timing);
 		process_sva_property(statement, block, procedure, clocking_expr.expr);
 
-		RTLIL::Process *rtlil_proc = netlist.canvas->addProcess(netlist.new_id());
+		RTLIL::Process *rtlil_proc = netlist.backend->canvas->addProcess(netlist.backend->new_id());
 		transfer_attrs(netlist, statement, rtlil_proc);
 #ifndef SLANG_MUX_LOWERING
 		procedure.copy_case_tree_into(rtlil_proc->root_case);
@@ -151,7 +151,7 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 		ProceduralContext procedure(netlist, ProcessTiming::implicit);
 		process_sva_property(statement, block, procedure, spec);
 
-		RTLIL::Process *rtlil_proc = netlist.canvas->addProcess(netlist.new_id());
+		RTLIL::Process *rtlil_proc = netlist.backend->canvas->addProcess(netlist.backend->new_id());
 		transfer_attrs(netlist, statement, rtlil_proc);
 #ifndef SLANG_MUX_LOWERING
 		procedure.copy_case_tree_into(rtlil_proc->root_case);

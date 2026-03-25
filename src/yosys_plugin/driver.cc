@@ -19,6 +19,7 @@
 #include "slang/syntax/AllSyntax.h"
 #include "slang/text/Json.h"
 
+#include "backend_builder.h"
 #include "diag.h"
 #include "slang_frontend.h"
 #include "version.h"
@@ -470,15 +471,18 @@ struct SlangFrontend : Frontend
 
 				auto ref_body = &get_instance_body(settings, *instance);
 				log_assert(ref_body->parentInstance);
-				auto [netlist, new_] = hqueue.get_or_emplace(
-						ref_body, design, settings, *compilation, *ref_body->parentInstance);
+
+				auto backend = std::make_unique<BackendGraphBuilder>();
+				backend->canvas = design->addModule(RTLIL::escape_id(module_type_id(*ref_body)));
+				auto [netlist, new_] = hqueue.get_or_emplace(ref_body, std::move(backend), settings,
+						*compilation, *ref_body->parentInstance);
 				log_assert(new_);
-				netlist.canvas->attributes[ID::top] = 1;
+				netlist.backend->canvas->attributes[ID::top] = 1;
 			}
 
 			for (int i = 0; i < (int)hqueue.queue.size(); i++) {
 				NetlistContext &netlist = *hqueue.queue[i];
-				emitted_module_names.push_back(netlist.canvas->name);
+				emitted_module_names.push_back(netlist.backend->canvas->name);
 
 				if (netlist.disabled)
 					continue;
@@ -710,8 +714,9 @@ struct TestSlangExprPass : Pass
 		global_compilation = &(*compilation);
 		global_sourcemgr = compilation->getSourceManager();
 
-		HierarchyQueue dummy_queue;
-		NetlistContext netlist(d, settings, *compilation, *top);
+		auto backend = std::make_unique<BackendGraphBuilder>();
+		backend->canvas = d->addModule("\\top");
+		NetlistContext netlist(std::move(backend), settings, *compilation, *top);
 		add_internal_symbols(netlist, top->body);
 
 		EvalContext amended_eval(netlist);

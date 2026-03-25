@@ -26,6 +26,7 @@
 // platforms
 #include "kernel/utils.h"
 
+#include "backend_builder.h"
 #include "cases.h"
 #include "diag.h"
 #include "slang/text/SourceLocation.h"
@@ -292,7 +293,7 @@ void ProceduralContext::update_variable_state(slang::SourceLocation loc, Variabl
 				if (netlist.is_inferred_memory(symbol)) {
 					bool big_endian =
 							!symbol.as<ast::ValueSymbol>().getType().getFixedRange().isDescending();
-					netlist.add_memory_init(netlist.id(symbol), chunk.base, big_endian,
+					netlist.backend->add_memory_init(netlist.id(symbol), chunk.base, big_endian,
 							rvalue.extract((int)base, (int)size).as_const());
 				}
 			} break;
@@ -403,7 +404,8 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 				blocking);
 	} else if (auto mem_write = std::get_if<LValue::MemoryWrite>(&lvalue.descriptor)) {
 		auto &netlist = context.netlist;
-		RTLIL::Cell *cell = netlist.canvas->addCell(netlist.new_id(), ID($memwr_v2));
+		RTLIL::Cell *cell =
+				netlist.backend->canvas->addCell(netlist.backend->new_id(), ID($memwr_v2));
 		std::string id = netlist.id(*mem_write->target.get_symbol());
 		cell->setParam(ID::MEMID, id);
 		auto &timing = context.timing;
