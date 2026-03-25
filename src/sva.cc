@@ -92,7 +92,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 	cell->setParam(ID::PRIORITY, --procedural.effects_priority);
 	cell->setPort(ID::ARGS, {});
 	cell->setPort(ID::A, a);
-	transfer_attrs<const ast::Statement>(netlist, statement, cell);
+	transfer_attrs(netlist, statement, cell);
 }
 
 void process_freestanding_sva_property(NetlistContext &netlist,
@@ -142,7 +142,7 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 		process_sva_property(statement, block, procedure, clocking_expr.expr);
 
 		RTLIL::Process *rtlil_proc = netlist.canvas->addProcess(netlist.new_id());
-		transfer_attrs<const ast::Statement>(netlist, statement, rtlil_proc);
+		transfer_attrs(netlist, statement, rtlil_proc);
 		procedure.copy_case_tree_into(rtlil_proc->root_case);
 	} else {
 		// No clocking
@@ -150,7 +150,7 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 		process_sva_property(statement, block, procedure, spec);
 
 		RTLIL::Process *rtlil_proc = netlist.canvas->addProcess(netlist.new_id());
-		transfer_attrs<const ast::Statement>(netlist, statement, rtlil_proc);
+		transfer_attrs(netlist, statement, rtlil_proc);
 		procedure.copy_case_tree_into(rtlil_proc->root_case);
 	}
 }

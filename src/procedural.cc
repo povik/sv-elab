@@ -276,10 +276,8 @@ void ProceduralContext::update_variable_state(slang::SourceLocation loc, Variabl
 				}
 				const ast::Symbol &symbol = *chunk.variable.get_symbol();
 				if (netlist.is_inferred_memory(symbol)) {
-					bool big_endian = !symbol.as<ast::ValueSymbol>()
-											   .getType()
-											   .getFixedRange()
-											   .isDescending();
+					bool big_endian =
+							!symbol.as<ast::ValueSymbol>().getType().getFixedRange().isDescending();
 					netlist.add_memory_init(netlist.id(symbol), chunk.base, big_endian,
 							rvalue.extract((int)base, (int)size).as_const());
 				}

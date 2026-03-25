@@ -140,48 +140,13 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 }
 
 namespace ast = slang::ast;
-namespace syntax = slang::syntax;
 namespace parsing = slang::parsing;
-
-ast::Compilation *global_compilation;
-const slang::SourceManager *global_sourcemgr;
-
-slang::SourceRange source_location(const ast::Symbol &obj)			{ return slang::SourceRange(obj.location, obj.location); }
-slang::SourceRange source_location(const ast::Expression &expr)		{ return expr.sourceRange; }
-slang::SourceRange source_location(const ast::Statement &stmt)		{ return stmt.sourceRange; }
-slang::SourceRange source_location(const ast::TimingControl &stmt)	{ return stmt.sourceRange; }
-
-std::string format_src(slang::SourceRange sr)
-{
-	auto sm = global_sourcemgr;
-
-	if (!sm->isFileLoc(sr.start()) || !sm->isFileLoc(sr.end()))
-		return "";
-
-	if (sr.start() == sr.end()) {
-		auto loc = sr.start();
-		std::string fn{sm->getFileName(loc)};
-		return Yosys::stringf("%s:%d.%d", fn.c_str(),
-			(int) sm->getLineNumber(loc), (int) sm->getColumnNumber(loc));
-	} else {
-		std::string fn{sm->getFileName(sr.start())};
-		return Yosys::stringf("%s:%d.%d-%d.%d", fn.c_str(),
-			(int) sm->getLineNumber(sr.start()), (int) sm->getColumnNumber(sr.start()),
-			(int) sm->getLineNumber(sr.end()), (int) sm->getColumnNumber(sr.end()));
-	}
-}
-
-template<typename T>
-std::string format_src(const T &obj)
-{
-	return format_src(source_location(obj));
-}
 
 };
 
 namespace slang_frontend {
 
-const RTLIL::IdString id(const std::string_view &view)
+static const RTLIL::IdString rtlil_id(const std::string_view &view)
 {
 	return RTLIL::escape_id(std::string(view));
 }
@@ -285,51 +250,6 @@ const std::optional<RTLIL::Const> NetlistContext::convert_const(const slang::Con
 	log_abort();
 }
 
-std::optional<RTLIL::Const> convert_attr_value(NetlistContext &netlist, const ast::AttributeSymbol* symbol)
-{
-	auto value = netlist.convert_const(symbol->getValue(), symbol->location);
-	if (value) {
-		// slang converts string literals to integer constants per the spec;
-		// we need to look at the syntax tree to recover the information
-		if (symbol->getSyntax() &&
-			symbol->getSyntax()->kind == syntax::SyntaxKind::AttributeSpec &&
-			symbol->getSyntax()->template as<syntax::AttributeSpecSyntax>().value &&
-			symbol->getSyntax()->template as<syntax::AttributeSpecSyntax>().value->expr->kind ==
-				syntax::SyntaxKind::StringLiteralExpression) {
-			value->flags |= RTLIL::CONST_FLAG_STRING;
-		}
-	}
-	return value;
-}
-
-template<typename T>
-void transfer_attrs(NetlistContext &netlist, T &from, RTLIL::AttrObject *to)
-{
-	auto src = format_src(from);
-	if (!src.empty())
-		to->attributes[ID::src] = src;
-
-	for (auto attr : global_compilation->getAttributes(from)) {
-		if (auto value = convert_attr_value(netlist, attr)) {
-			to->attributes[id(attr->name)] = *value;
-		}
-	}
-}
-template void transfer_attrs<const ast::Symbol>(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
-
-template<typename T>
-void transfer_attrs(NetlistContext &netlist, T &from, AttributeGuard &guard)
-{
-	guard.set_source(source_location(from));
-
-	for (auto attr : global_compilation->getAttributes(from)) {
-		if (auto value = convert_attr_value(netlist, attr)) {
-			guard.set(id(attr->name), *value);
-		}
-	}
-}
-template void transfer_attrs<const ast::Symbol>(NetlistContext &netlist, const ast::Symbol &from, AttributeGuard &guard);
-template void transfer_attrs<const ast::Statement>(NetlistContext &netlist, const ast::Statement &from, AttributeGuard &guard);
 };
 
 #include "cases.h"
@@ -934,6 +854,8 @@ int str_to_state_vect(std::vector<RTLIL::State> &data, const char *str, uint64_t
 }
 
 // clang-format on
+extern const slang::SourceManager *global_sourcemgr;
+
 void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 {
 	NetlistContext &netlist = context.netlist;
@@ -1054,7 +976,7 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 				needs_reversal ? data_first_address + (nwords - 1) * increment : data_first_address;
 
 		uint32_t base = target_range.isDescending() ? hdl_base - target_range.right
-													  : target_range.right - hdl_base;
+													: target_range.right - hdl_base;
 
 		context.do_simple_assign(call.sourceRange.start(),
 				target.extract(((uint64_t)base) * word_size, const_.size()),
@@ -1693,30 +1615,6 @@ EvalContext::EvalContext(ProceduralContext &procedural)
 {
 }
 
-struct HierarchyQueue {
-	template<class... Args>
-	std::pair<NetlistContext&, bool> get_or_emplace(const ast::InstanceBodySymbol *symbol, Args&&... args)
-	{
-		if (netlists.count(symbol)) {
-			return {*netlists.at(symbol), false};
-		} else {
-			NetlistContext *ref = new NetlistContext(args...);
-			netlists[symbol] = ref;
-			queue.push_back(ref);
-			return {*ref, true};
-		}
-	}
-
-	~HierarchyQueue()
-	{
-		for (auto netlist : queue)
-			delete netlist;
-	}
-
-	std::map<const ast::InstanceBodySymbol *, NetlistContext *> netlists;
-	std::vector<NetlistContext *> queue;
-};
-
 // Helper for visiting the elements of a connected interface array
 // and assigning them generated names
 template <typename Func> void visit_interface_elements(const ast::PortConnection *conn, Func &&visit_fn)
@@ -1774,7 +1672,7 @@ public:
 	PopulateNetlist(HierarchyQueue &queue, NetlistContext &netlist)
 		: TimingPatternInterpretor(netlist.settings, (DiagnosticIssuer&) netlist, netlist.eval),
 		  queue(queue), netlist(netlist), settings(netlist.settings),
-		  mem_detect(settings, std::bind(&NetlistContext::should_dissolve, &netlist, std::placeholders::_1, nullptr), netlist.eval) {}
+		  mem_detect(netlist, settings, std::bind(&NetlistContext::should_dissolve, &netlist, std::placeholders::_1, nullptr), netlist.eval) {}
 
 	void handle_comb_like_process(const ast::ProceduralBlockSymbol &symbol, const ast::Statement &body)
 	{
@@ -2243,11 +2141,11 @@ public:
 					case ast::ArgumentDirection::Out: {
 						ast_invariant(expr, ast::AssignmentExpression::isKind(expr.kind));
 						auto &assign = expr.as<ast::AssignmentExpression>();
-						cell->setPort(id(conn->port.name), netlist.eval.connection_lhs(assign));
+						cell->setPort(rtlil_id(conn->port.name), netlist.eval.connection_lhs(assign));
 						break;
 					}
 					case ast::ArgumentDirection::In: {
-						cell->setPort(id(conn->port.name), netlist.eval(expr));
+						cell->setPort(rtlil_id(conn->port.name), netlist.eval(expr));
 						break;
 					}
 					case ast::ArgumentDirection::Ref: {
@@ -2404,7 +2302,7 @@ public:
 					} else {
 						signal = netlist.eval(expr);
 					}
-					cell->setPort(id(conn->port.name), signal);
+					cell->setPort(rtlil_id(conn->port.name), signal);
 					break;
 				}
 				case ast::SymbolKind::InterfacePort: {
@@ -3444,35 +3342,28 @@ NetlistContext::~NetlistContext()
 	}
 }
 
-USING_YOSYS_NAMESPACE
+std::vector<slang::DiagCode> forbidden_diag_demotions = {
+	slang::diag::UnknownSystemName
+};
 
-struct SlangVersionPass : Pass {
-	SlangVersionPass() : Pass("slang_version", "display revision of slang frontend") {}
+void catch_forbidden_options(slang::driver::Driver &driver) {
+	slang::DiagnosticEngine &engine = driver.diagEngine;
 
-	bool replace_existing_pass() const override { return true; }
-
-	void help() override
-	{
-		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
-		log("\n");
-		log("	slang_version\n");
-		log("\n");
-		log("Display git revisions of the slang frontend.\n");
-		log("\n");
+	// FIXME: this doesn't catch demotions which are location specific via pragmas
+	for (auto code : forbidden_diag_demotions) {
+		if (engine.getSeverity(code, slang::SourceLocation::NoLocation) !=
+				slang::DiagnosticSeverity::Error) {
+			slang::Diagnostic demotion_diag(diag::ForbiddenDemotion, slang::SourceLocation::NoLocation);
+			demotion_diag << engine.getOptionName(code);
+			engine.issue(demotion_diag);
+			engine.setSeverity(slang::diag::UnknownSystemName, slang::DiagnosticSeverity::Error);
+		}
 	}
 
-	void execute(std::vector<std::string> args, [[maybe_unused]] RTLIL::Design *d) override
-	{
-		if (args.size() != 1)
-			cmd_error(args, 1, "Extra argument");
-
-		log("sv-elab revision %s\n", YOSYS_SLANG_REVISION);
-		log("slang revision %s\n", SLANG_REVISION);
+	if (driver.options.compilationFlags[ast::CompilationFlags::IgnoreUnknownModules]) {
+		engine.issue({diag::NoIgnoreUnknownModules, slang::SourceLocation::NoLocation});
 	}
-} SlangVersionPass;
-
-static std::vector<std::string> default_options;
-static std::vector<std::vector<std::string>> defaults_stack;
+}
 
 void fixup_options(SynthesisSettings &settings, slang::driver::Driver &driver)
 {
@@ -3521,534 +3412,17 @@ void fixup_options(SynthesisSettings &settings, slang::driver::Driver &driver)
 	}
 }
 
-static std::string expected_diagnostic;
-
-std::vector<slang::DiagCode> forbidden_diag_demotions = {
-	slang::diag::UnknownSystemName
-};
-
-void catch_forbidden_options(slang::driver::Driver &driver) {
-	slang::DiagnosticEngine &engine = driver.diagEngine;
-
-	// FIXME: this doesn't catch demotions which are location specific via pragmas
-	for (auto code : forbidden_diag_demotions) {
-		if (engine.getSeverity(code, slang::SourceLocation::NoLocation) !=
-				slang::DiagnosticSeverity::Error) {
-			slang::Diagnostic demotion_diag(diag::ForbiddenDemotion, slang::SourceLocation::NoLocation);
-			demotion_diag << engine.getOptionName(code);
-			engine.issue(demotion_diag);
-			engine.setSeverity(slang::diag::UnknownSystemName, slang::DiagnosticSeverity::Error);
-		}
-	}
-
-	if (driver.options.compilationFlags[ast::CompilationFlags::IgnoreUnknownModules]) {
-		engine.issue({diag::NoIgnoreUnknownModules, slang::SourceLocation::NoLocation});
-	}
+void populate_netlist(HierarchyQueue &hqueue, NetlistContext &netlist)
+{
+	PopulateNetlist populate(hqueue, netlist);
+	netlist.realm.visit(populate);
 }
 
-struct SlangFrontend : Frontend {
-	SlangFrontend() : Frontend("slang", "read SystemVerilog (slang)") {}
-
-	bool replace_existing_pass() const override { return true; }
-
-	std::string wrap_text(std::string desc, size_t width = 70)
-	{
-	    constexpr const char* indent = "        ";
-
-	    std::replace(desc.begin(), desc.end(), '\n', ' ');
-	    std::replace(desc.begin(), desc.end(), '\r', ' ');
-
-	    std::string result;
-	    size_t pos = 0;
-
-	    while (pos < desc.size()) {
-	        while (pos < desc.size() && desc[pos] == ' ')
-	            ++pos;
-
-	        if (pos >= desc.size())
-	            break;
-
-	        if (desc.size() - pos <= width) {
-	            result += desc.substr(pos);
-	            break;
-	        }
-
-	        size_t end = desc.rfind(' ', pos + width);
-	        if (end == std::string::npos || end < pos)
-	            end = pos + width;
-
-	        result += desc.substr(pos, end - pos);
-	        result += '\n';
-	        result += indent;
-
-	        pos = end;
-	    }
-	    return result;
-	}
-
-	void help() override
-	{
-		slang::driver::Driver driver;
-		driver.addStandardArgs();
-		SynthesisSettings settings;
-		settings.addOptions(driver.cmdLine);
-		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
-		log("\n");
-		log("    read_slang [options] [filename]\n");
-		log("\n");
-		log("Read SystemVerilog sources and elaborate a design hierarchy into word-level\n");
-		log("netlist form.\n");
-		log("\n");
-		for (auto& opt : driver.cmdLine.getHelpOptions()) { 
-			log("    %s\n", opt.first.c_str());
-			log("        %s\n",wrap_text(opt.second).c_str());
-			log("\n");
-		}
-		log("\n");
-	}
-
-	std::optional<std::string> read_heredoc(std::vector<std::string> &args)
-	{
-		std::string eot;
-
-		if (!args.empty() && args.back().compare(0, 2, "<<") == 0) {
-			eot = args.back().substr(2);
-			args.pop_back();
-		} else if (args.size() >= 2 && args[args.size() - 2] == "<<") {
-			eot = args.back();
-			args.pop_back();
-			args.pop_back();
-		} else {
-			return {};
-		}
-
-		if (eot.empty())
-			log_error("Missing EOT marker for reading a here-document\n");
-
-		std::string buffer;
-		bool in_script = current_script_file != nullptr;
-
-		while (true) {
-			char line[4096];
-			if (!fgets(line, sizeof(line), in_script ? current_script_file : stdin))
-				log_error("Unexpected EOF reading a here-document\n");
-
-			const char *p = line;
-			while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
-				p++;
-
-			if (!strncmp(p, eot.data(), eot.size()) &&
-				(*(p + eot.size()) == '\r' || *(p + eot.size()) == '\n'))
-				break;
-			else
-				buffer += line;
-		}
-
-		return buffer;
-	}
-
-	// There are three cases handled by this function:
-	// 1. Normal mode; no expected diagnostics. Return `false` to continue executing.
-	// 2. Test mode; expected diagnostic found. Return `true` to exit early with success.
-	// 3a. Test mode; expected diagnostic not found but more could appear later. Return `false`.
-	// 3b. Test mode; expected diagnostic not found. Use `log_error()` to exit early with failure.
-	bool check_diagnostics(slang::DiagnosticEngine &diagEngine, const slang::SmallVector<slang::Diagnostic> &diags, bool last)
-	{
-		if (expected_diagnostic.empty())
-			return false;
-
-		for (auto &diag : diags) {
-			auto message = diagEngine.formatMessage(diag);
-			if (message == expected_diagnostic) {
-				log("Expected diagnostic `%s' found\n", expected_diagnostic.c_str());
-				expected_diagnostic.clear();
-				return true;
-			}
-		}
-		if (last)
-			log_error("Expected diagnostic `%s' but none emitted\n", expected_diagnostic.c_str());
-		else
-			return false;
-	}
-
-	void execute(std::istream *&f, std::string filename, std::vector<std::string> args, RTLIL::Design *design) override
-	{
-		(void) f;
-		(void) filename;
-		log_header(design, "Executing SLANG frontend.\n");
-
-		auto guard = slang::OS::captureOutput([&](std::string_view text, bool) { log("%s", std::string(text).c_str()); });
-		// names of RTLIL modules added in this invocation; does not include blackboxes
-		std::vector<RTLIL::IdString> emitted_module_names;
-		slang::driver::Driver driver;
-		driver.addStandardArgs();
-		SynthesisSettings settings;
-		settings.addOptions(driver.cmdLine);
-		diag::setup_messages(driver.diagEngine);
-
-		{
-			if (auto heredoc = read_heredoc(args)) {
-				auto buffer = driver.sourceManager.assignText("<inlined>", std::string_view{heredoc.value()});
-				driver.sourceLoader.addBuffer(buffer);
-			}
-
-			args.insert(args.begin() + 1, default_options.begin(), default_options.end());
-
-			std::vector<std::unique_ptr<char[]>> c_args_guard;
-			std::vector<char *> c_args;
-
-			for (auto arg : args) {
-				char *c = new char[arg.size() + 1];
-				strcpy(c, arg.c_str());
-				c_args_guard.emplace_back(c);
-				c_args.push_back(c);
-			}
-
-			if (!driver.parseCommandLine(c_args.size(), &c_args[0]))
-				log_cmd_error("Bad command\n");
-		}
-
-		fixup_options(settings, driver);
-		if (!driver.processOptions())
-			log_cmd_error("Bad command\n");
-		catch_forbidden_options(driver);
-
-		try {
-			if (!driver.parseAllSources())
-				log_error("Parsing failed; see full log for details\n");
-
-			auto compilation = driver.createCompilation();
-
-			if (settings.extern_modules.value_or(true))
-				import_blackboxes_from_rtlil(driver.sourceManager, *compilation, design);
-
-			if (settings.dump_ast.value_or(false)) {
-				slang::JsonWriter writer;
-				writer.setPrettyPrint(true);
-				ast::ASTSerializer serializer(*compilation, writer);
-				serializer.serialize(compilation->getRoot());
-				std::cout << writer.view() << std::endl;
-			}
-
-			bool in_succesful_failtest = false;
-
-			driver.reportCompilation(*compilation,/* quiet */ false);
-			if (check_diagnostics(driver.diagEngine, compilation->getAllDiagnostics(), /*last=*/false))
-				in_succesful_failtest = true;
-
-			if (driver.diagEngine.getNumErrors()) {
-				// Stop here should there have been any errors from AST compilation,
-				// PopulateNetlist requires a well-formed AST without error nodes
-				(void) driver.reportDiagnostics(/* quiet */ false);
-				if (!in_succesful_failtest)
-					log_error("Design elaboration failed; see full log for details\n");
-				return;
-			}
-
-			if (settings.ast_compilation_only.value_or(false)) {
-				(void) driver.reportDiagnostics(/* quiet */ false);
-				return;
-			}
-
-			global_compilation = &(*compilation);
-			global_sourcemgr = compilation->getSourceManager();
-
-			HierarchyQueue hqueue;
-			for (auto instance : compilation->getRoot().topInstances) {
-				if (instance->getDefinition().definitionKind == ast::DefinitionKind::Program) {
-					slang::Diagnostic program_diag(diag::ProgramUnsupported, instance->location);
-					driver.diagEngine.issue(program_diag);
-					continue;
-				}
-
-				auto ref_body = &get_instance_body(settings, *instance);
-				log_assert(ref_body->parentInstance);
-				auto [netlist, new_] = hqueue.get_or_emplace(ref_body, design, settings,
-															 *compilation, *ref_body->parentInstance);
-				log_assert(new_);
-				netlist.canvas->attributes[ID::top] = 1;
-			}
-
-			for (int i = 0; i < (int) hqueue.queue.size(); i++) {
-				NetlistContext &netlist = *hqueue.queue[i];
-				emitted_module_names.push_back(netlist.canvas->name);
-
-				if (netlist.disabled)
-					continue;
-
-				PopulateNetlist populate(hqueue, netlist);
-				netlist.realm.visit(populate);
-
-				slang::Diagnostics diags;
-				diags.append_range(populate.mem_detect.issued_diagnostics);
-				diags.append_range(netlist.issued_diagnostics);
-				diags.sort(driver.sourceManager);
-
-				if (check_diagnostics(driver.diagEngine, diags, /*last=*/false))
-					in_succesful_failtest = true;
-
-				for (int i = 0; i < (int) diags.size(); i++) {
-					if (i > 0 && diags[i] == diags[i - 1])
-						continue;
-					driver.diagEngine.issue(diags[i]);
-				}
-			}
-
-			if (check_diagnostics(driver.diagEngine, {}, /*last=*/true))
-				in_succesful_failtest = true;
-
-			if (!driver.reportDiagnostics(/* quiet */ false)) {
-				if (!in_succesful_failtest)
-					log_error("Design elaboration failed; see full log for details\n");
-				return;
-			}
-		} catch (const std::exception& e) {
-			log_error("Exception: %s\n", e.what());
-		}
-
-		if (!settings.no_proc.value_or(false)) {
-			// Hack to get an empty selection in a way compatible with both pre and post Yosys v0.52
-			// Front of the selection stack should be a "full selection" at any time, and we can
-			// amend it.
-			RTLIL::Selection emitted_modules = design->selection_stack.front();
-			emitted_modules.full_selection = false;
-			for (auto name : emitted_module_names)
-				emitted_modules.selected_modules.insert(name);
-
-			design->selection_stack.push_back(emitted_modules);
-
-			log_push();
-			call(design, "proc_clean");
-			call(design, "tribuf");
-			call(design, "proc_rmdead");
-			call(design, "proc_prune");
-			call(design, "proc_init");
-			call(design, "proc_rom");
-			call(design, "proc_mux");
-			call(design, "proc_clean");
-			call(design, "opt_expr -keepdc");
-			log_pop();
-
-			design->selection_stack.pop_back();
-		}
-	}
-} SlangFrontend;
-
-struct SlangDefaultsPass : Pass {
-	SlangDefaultsPass() : Pass("slang_defaults", "set default options for read_slang") {}
-
-	bool replace_existing_pass() const override { return true; }
-
-	void help() override
-	{
-		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
-		log("\n");
-		log("	slang_defaults -add [options]\n");
-		log("\n");
-		log("Add default options for subsequent calls to read_slang.\n");
-		log("\n");
-		log("\n");
-		log("	slang_defaults -clear\n");
-		log("\n");
-		log("Clear the list of default options to read_slang.\n");
-		log("\n");
-		log("\n");
-		log("	slang_defaults -push\n");
-		log("	slang_defaults -pop\n");
-		log("\n");
-		log("Push or pop the default option list to a stack. On -push the list isn't cleared.\n");
-		log("\n");
-	}
-
-	void execute(std::vector<std::string> args, [[maybe_unused]] RTLIL::Design *d) override
-	{
-		if (args.size() < 2)
-			cmd_error(args, 1, "Missing argument");
-
-		if (args[1] == "-add") {
-			default_options.insert(default_options.end(), args.begin() + 2, args.end());
-		} else {
-			if (args.size() != 2)
-				cmd_error(args, 2, "Extra argument");
-
-			if (args[1] == "-clear") {
-				default_options.clear();
-			} else if (args[1] == "-push") {
-				defaults_stack.push_back(default_options);
-			} else if (args[1] == "-pop") {
-				if (!defaults_stack.empty()) {
-					default_options.swap(defaults_stack.back());
-					defaults_stack.pop_back();
-				} else {
-					default_options.clear();
-				}
-			} else {
-				cmd_error(args, 1, "Unknown option");
-			}
-		}
-	}
-} SlangDefaultsPass;
-
-struct TestSlangDiagPass : Pass {
-	TestSlangDiagPass() : Pass("test_slangdiag", "test diagnostics emission by the slang frontend") {}
-
-	bool replace_existing_pass() const override { return true; }
-
-	void help() override
-	{
-		log("Perform internal test of the slang frontend.\n");
-	}
-
-	void execute(std::vector<std::string> args, RTLIL::Design *design) override
-	{
-		log_header(design, "Executing TEST_SLANGDIAG pass.\n");
-
-		size_t argidx;
-		for (argidx = 1; argidx < args.size(); argidx++)
-		{
-			if (args[argidx] == "-expect" && argidx+1 < args.size()) {
-				std::string message = args[++argidx];
-				if (message.front() == '\"' && message.back() == '\"')
-					message = message.substr(1, message.size() - 2);
-				expected_diagnostic = message;
-				continue;
-			}
-			break;
-		}
-		extra_args(args, argidx, design, false);
-	}
-} TestSlangDiagPass;
-
-class TFunc : public ast::SystemSubroutine {
-public:
-	TFunc() : ast::SystemSubroutine("$t", ast::SubroutineKind::Function) {}
-
-	const ast::Type& checkArguments(const ast::ASTContext& context, const Args& args,
-									slang::SourceRange range, const ast::Expression*) const final {
-		auto& comp = context.getCompilation();
-		if (!checkArgCount(context, false, args, range, 1, 1))
-			return comp.getErrorType();
-		return comp.getVoidType();
-	}
-
-	slang::ConstantValue eval(ast::EvalContext& context, const Args&,
-							  slang::SourceRange range,
-							  const ast::CallExpression::SystemCallInfo&) const final {
-		notConst(context, range);
-		return nullptr;
-	}
-};
-
-struct TestSlangExprPass : Pass {
-	TestSlangExprPass() : Pass("test_slangexpr", "test expression evaluation within slang frontend") {}
-
-	bool replace_existing_pass() const override { return true; }
-
-	void help() override
-	{
-		log("Perform internal test of the slang frontend.\n");
-	}
-
-	void execute(std::vector<std::string> args, RTLIL::Design *d) override
-	{
-		log_header(d, "Executing TEST_SLANGEXPR pass.\n");
-
-		auto guard = slang::OS::captureOutput([&](std::string_view text, bool) { log("%s", std::string(text).c_str()); });
-		slang::driver::Driver driver;
-		driver.addStandardArgs();
-		SynthesisSettings settings;
-		settings.addOptions(driver.cmdLine);
-		diag::setup_messages(driver.diagEngine);
-
-		{
-			std::vector<char *> c_args;
-			for (auto arg : args) {
-				char *c = new char[arg.size() + 1];
-				strcpy(c, arg.c_str());
-				c_args.push_back(c);
-			}
-			if (!driver.parseCommandLine(c_args.size(), &c_args[0]))
-				log_cmd_error("Bad command\n");
-		}
-
-		fixup_options(settings, driver);
-		if (!driver.processOptions())
-			log_cmd_error("Bad command\n");
-
-		if (!driver.parseAllSources())
-			log_error("Parsing failed\n");
-
-		auto compilation = driver.createCompilation();
-		auto tfunc = std::make_shared<TFunc>();
-		compilation->addSystemSubroutine(tfunc);
-
-		if (settings.dump_ast.value_or(false)) {
-			slang::JsonWriter writer;
-			writer.setPrettyPrint(true);
-			ast::ASTSerializer serializer(*compilation, writer);
-			serializer.serialize(compilation->getRoot());
-			std::cout << writer.view() << std::endl;
-		}
-
-		log_assert(compilation->getRoot().topInstances.size() == 1);
-		auto *top = compilation->getRoot().topInstances[0];
-		compilation->forceElaborate(top->body);
-
-		driver.reportCompilation(*compilation,/* quiet */ false);
-		if (driver.diagEngine.getNumErrors()) {
-			(void) driver.reportDiagnostics(/* quiet */ false);
-			log_error("Compilation failed\n");
-			return;
-		}
-
-		global_compilation = &(*compilation);
-		global_sourcemgr = compilation->getSourceManager();
-
-		HierarchyQueue dummy_queue;
-		NetlistContext netlist(d, settings, *compilation, *top);
-		PopulateNetlist populate(dummy_queue, netlist);
-		populate.add_internal_wires(top->body);
-
-		EvalContext amended_eval(netlist);
-		amended_eval.ignore_ast_constants = true;
-
-		int ntests = 0;
-		int nfailures = 0;
-
-		top->visit(ast::makeVisitor([&](auto&, const ast::SubroutineSymbol&) {
-			// ignore
-		}, [&](auto&, const ast::ExpressionStatement &stmt) {
-			assert(stmt.expr.kind == ast::ExpressionKind::Call);
-			auto &call = stmt.expr.as<ast::CallExpression>();
-			assert(call.getSubroutineName() == "$t");
-			auto expr = call.arguments()[0];
-
-			SigSpec ref = netlist.eval(*expr);
-			SigSpec test = amended_eval(*expr);
-
-			slang::SourceRange sr = expr->sourceRange;
-			std::string_view text = global_sourcemgr->getSourceText(sr.start().buffer()) \
-										.substr(sr.start().offset(), sr.end().offset() - sr.start().offset());
-
-			if (ref == test) {
-				log_debug("%s: %s (ref) == %s (test) # %s\n", format_src(*expr).c_str(),
-					log_signal(ref), log_signal(test),
-					std::string(text).c_str());
-				ntests++;
-			} else {
-				log("%s: %s (ref) == %s (test) # %s\n", format_src(*expr).c_str(),
-					log_signal(ref), log_signal(test),
-					std::string(text).c_str());
-				ntests++;
-				nfailures++;
-			}
-		}));
-
-		if (!nfailures)
-			log("%d tests passed.\n", ntests);
-		else
-			log_error("%d out of %d tests failed.\n", nfailures, ntests);
-	}
-} TestSlangExprPass;
+void add_internal_symbols(NetlistContext &netlist, const ast::InstanceBodySymbol &body)
+{
+	HierarchyQueue dummy_queue;
+	PopulateNetlist populate(dummy_queue, netlist);
+	populate.add_internal_wires(body);
+}
 
 };

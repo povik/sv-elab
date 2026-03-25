@@ -62,6 +62,9 @@ namespace slang {
 		class RangeSelectExpression;
 		class StatementBlockSymbol;
 	};
+	namespace driver {
+		class Driver;
+	}
 };
 
 namespace slang_frontend {
@@ -91,6 +94,7 @@ struct VariableChunk;
 struct ProcessTiming;
 struct Case;
 class LValue;
+struct HierarchyQueue;
 
 class Variable {
 public:
@@ -624,9 +628,12 @@ struct NetlistContext : RTLILBuilder, public DiagnosticIssuer {
 RTLIL::SigBit inside_comparison(EvalContext &eval, RTLIL::SigSpec left, const ast::Expression &expr);
 extern std::string hierpath_relative_to(const ast::Scope *relative_to, const ast::Scope *scope);
 std::string format_src(slang::SourceRange source_range);
-template<typename T> void transfer_attrs(NetlistContext &netlist, T &from, RTLIL::AttrObject *to);
-template<typename T> void transfer_attrs(NetlistContext &netlist, T &from, AttributeGuard &guard);
-template<typename T> void transfer_attrs(T &from, RTLIL::AttrObject *to);
+void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
+void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, AttributeGuard &guard);
+void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, RTLIL::AttrObject *to);
+void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, AttributeGuard &guard);
+void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, RTLIL::AttrObject *to);
+void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, AttributeGuard &guard);
 uint64_t bitstream_member_offset(const ast::FieldSymbol &member);
 bool is_special_net_type(const ast::NetType &type);
 bool is_special_net(const ast::Symbol &symbol);
@@ -759,5 +766,36 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 void process_freestanding_sva_property(NetlistContext &netlist,
 									   const ast::ConcurrentAssertionStatement &statement,
 						  			   const ast::StatementBlockSymbol *block);
+
+// slang_frontend.cc
+struct HierarchyQueue {
+	template<class... Args>
+	std::pair<NetlistContext&, bool> get_or_emplace(const ast::InstanceBodySymbol *symbol, Args&&... args)
+	{
+		if (netlists.count(symbol)) {
+			return {*netlists.at(symbol), false};
+		} else {
+			NetlistContext *ref = new NetlistContext(args...);
+			netlists[symbol] = ref;
+			queue.push_back(ref);
+			return {*ref, true};
+		}
+	}
+
+	~HierarchyQueue()
+	{
+		for (auto netlist : queue)
+			delete netlist;
+	}
+
+	std::map<const ast::InstanceBodySymbol *, NetlistContext *> netlists;
+	std::vector<NetlistContext *> queue;
+};
+
+void catch_forbidden_options(slang::driver::Driver &driver);
+void fixup_options(SynthesisSettings &settings, slang::driver::Driver &driver);
+const ast::InstanceBodySymbol &get_instance_body(SynthesisSettings &settings, const ast::InstanceSymbol &instance);
+void populate_netlist(HierarchyQueue &hqueue, NetlistContext &netlist);
+void add_internal_symbols(NetlistContext &netlist, const ast::InstanceBodySymbol &body);
 
 };
