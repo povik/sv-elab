@@ -2034,6 +2034,28 @@ public:
 			return;
 		}
 
+#ifdef SLANG_NO_YOSYS
+		{
+			ir::Value sig = netlist.wire(*symbol.internalSymbol);
+			std::string name = netlist.id(*symbol.internalSymbol);
+			switch (symbol.direction) {
+			case ast::ArgumentDirection::In:
+				netlist.register_driven(*symbol.internalSymbol);
+				netlist.add_input(name, sig);
+				break;
+			case ast::ArgumentDirection::InOut:
+				netlist.register_driven(*symbol.internalSymbol);
+				netlist.add_input(name, sig);
+				netlist.add_output(name, sig);
+				break;
+			case ast::ArgumentDirection::Out:
+				netlist.add_output(name, sig);
+				break;
+			default:
+				break;
+			}
+		}
+#else
 		RTLIL::Wire *w = netlist.wire(*symbol.internalSymbol).raw().as_wire();
 		log_assert(w);
 		switch (symbol.direction) {
@@ -2065,6 +2087,7 @@ public:
 			netlist.add_diag(diag::RefUnsupported, symbol.location);
 			break;
 		}
+#endif
 	}
 
 	void handle(const ast::MultiPortSymbol &sym)
@@ -2143,6 +2166,49 @@ public:
 			return;
 		}
 
+#ifdef SLANG_NO_YOSYS
+		if (sym.isModule() && netlist.is_blackbox(sym.body.getDefinition())) {
+			std::vector<BackendGraphBuilderBase::PortConnection> ports;
+
+			for (auto *conn : sym.getPortConnections()) {
+				if (!conn->getExpression())
+					continue;
+				auto &expr = *conn->getExpression();
+
+				if (conn->port.kind != ast::SymbolKind::Port)
+					continue;
+
+				auto &port = conn->port.as<ast::PortSymbol>();
+				BackendGraphBuilderBase::PortConnection::Direction dir;
+				ir::Value sig;
+
+				switch (port.direction) {
+				case ast::ArgumentDirection::In:
+					dir = BackendGraphBuilderBase::PortConnection::kInput;
+					sig = netlist.eval(expr);
+					break;
+				case ast::ArgumentDirection::Out: {
+					dir = BackendGraphBuilderBase::PortConnection::kOutput;
+					ast_invariant(expr, ast::AssignmentExpression::isKind(expr.kind));
+					auto &assign = expr.as<ast::AssignmentExpression>();
+					sig = netlist.eval.connection_lhs(assign);
+					break;
+				}
+				case ast::ArgumentDirection::InOut:
+					dir = BackendGraphBuilderBase::PortConnection::kInOut;
+					sig = netlist.eval(expr);
+					break;
+				default:
+					continue;
+				}
+
+				ports.push_back({std::string(port.name), dir, sig});
+			}
+
+			netlist.add_instance(std::string(sym.body.name), std::move(ports));
+			return;
+		}
+#else
 		// blackboxes get special handling no matter the hierarchy mode
 		if (sym.isModule() && netlist.is_blackbox(sym.body.getDefinition())) {
 			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), RTLIL::escape_id(std::string(sym.body.name)));
@@ -2209,6 +2275,7 @@ public:
 			export_blackbox_to_rtlil(netlist, sym, netlist.backend->canvas->design);
 			return;
 		}
+#endif
 
 		if (netlist.should_dissolve(sym)) {
 			sym.body.visit(*this);
