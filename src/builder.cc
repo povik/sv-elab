@@ -102,6 +102,10 @@ ir::Net GraphBuilder::LogicNot(ir::Value a)
 ir::Value GraphBuilder::Mux(ir::Value a, ir::Value b, ir::Net s)
 {
 	assert_invariant(a.size() == b.size());
+	if (a == b)
+		return a;
+	if (a == ir::S0 && b == ir::S1)
+		return s;
 	if (s == ir::S0)
 		return a;
 	if (s == ir::S1)
