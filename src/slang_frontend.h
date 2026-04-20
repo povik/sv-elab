@@ -751,6 +751,7 @@ struct PatternBit
 	PatternBit(ir::Net n) : kind(Concrete), net(n) {}
 	static PatternBit wildcard() { return {}; }
 	bool is_wildcard() const { return kind == Wildcard; }
+	bool is_const() const { return kind == Wildcard || net.is_const(); }
 	bool operator==(const PatternBit &o) const
 	{
 		if (kind != o.kind)
