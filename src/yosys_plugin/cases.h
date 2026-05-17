@@ -124,7 +124,7 @@ struct Case
 	}
 
 	void insert_latch_signaling(
-			DiagnosticIssuer &issuer, Yosys::dict<VariableBit, RTLIL::SigSig> &map)
+			DiagnosticIssuer &issuer, hashlib::dict<VariableBit, RTLIL::SigSig> &map)
 	{
 		std::vector<Switch *> prepended_switches;
 		std::set<VariableBit> has_mask_switches;

@@ -42,6 +42,7 @@ add_library(yosys-slang ${LIBRARY_TYPE}
 )
 target_include_directories(yosys-slang PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hashlib/
     ${CMAKE_CURRENT_SOURCE_DIR}/yosys_plugin
     ${CMAKE_CURRENT_BINARY_DIR}
 )

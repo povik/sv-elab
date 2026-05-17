@@ -34,7 +34,7 @@ struct InferredMemoryDetector : public TimingPatternInterpretor,
 										ast::VisitFlags::Statements | ast::VisitFlags::Expressions>
 {
 	NetlistContext &netlist;
-	Yosys::pool<const ast::Symbol *> memory_candidates;
+	hashlib::pool<const ast::Symbol *> memory_candidates;
 	std::function<bool(const ast::InstanceSymbol &sym)> should_dissolve;
 	bool disallow_implicit = false;
 

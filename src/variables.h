@@ -28,13 +28,13 @@ struct VariableBit
 	bool operator==(const VariableBit &other) const { return label() == other.label(); }
 	bool operator<(const VariableBit &other) const { return label() < other.label(); }
 #if YS_HASHING_VERSION >= 1
-	[[nodiscard]] Yosys::Hasher hash_into(Yosys::Hasher h) const
+	[[nodiscard]] hashlib::Hasher hash_into(hashlib::Hasher h) const
 	{
 		h.eat(label());
 		return h;
 	}
 #else
-	int hash() const { return Yosys::hash_ops<Label>::hash(label()); }
+	int hash() const { return hashlib::hash_ops<Label>::hash(label()); }
 #endif
 
 	std::string index_text() const

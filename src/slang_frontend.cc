@@ -85,11 +85,15 @@
 #include "diag.h"
 #include "async_pattern.h"
 #include "variables.h"
-#include "backend_builder.h"
 
 using namespace std::string_literals;
 
 namespace slang_frontend {
+
+// Definition of hashlib static members
+namespace hashlib {
+uint32_t HasherDJB32::fudge = 0;
+}
 
 ValuePattern svint_to_pattern(
 		NetlistContext &netlist,
@@ -292,9 +296,9 @@ const std::optional<ir::Const> NetlistContext::convert_const(const slang::Consta
 namespace slang_frontend {
 
 #ifndef SLANG_MUX_LOWERING
-[[maybe_unused]] static Yosys::pool<VariableBit> detect_possibly_unassigned_subset(Yosys::pool<VariableBit> &signals, Case *rule, int level=0)
+[[maybe_unused]] static hashlib::pool<VariableBit> detect_possibly_unassigned_subset(hashlib::pool<VariableBit> &signals, Case *rule, int level=0)
 {
-	Yosys::pool<VariableBit> remaining = signals;
+	hashlib::pool<VariableBit> remaining = signals;
 	bool debug = false;
 
 	for (auto &action : rule->actions) {
@@ -316,7 +320,7 @@ namespace slang_frontend {
 		if (remaining.empty())
 			break;
 
-		Yosys::pool<VariableBit> new_remaining;
+		hashlib::pool<VariableBit> new_remaining;
 		Yosys::BitPatternPool pool(switch_->signal);
 		for (auto case_ : switch_->cases) {
 			if (!switch_->signal.empty() && pool.empty())
@@ -1703,9 +1707,9 @@ public:
 		}
 		netlist.add_continuous_driver(cl, cr);
 #else
-		Yosys::pool<VariableBit> dangling;
+		hashlib::pool<VariableBit> dangling;
 		if (symbol.procedureKind != ast::ProceduralBlockKind::AlwaysComb) {
-			Yosys::pool<VariableBit> driven_pool = {all_driven.begin(), all_driven.end()};
+			hashlib::pool<VariableBit> driven_pool = {all_driven.begin(), all_driven.end()};
 			dangling =
 				detect_possibly_unassigned_subset(driven_pool, procedure.root_case.get());
 		}
@@ -1734,7 +1738,7 @@ public:
 		if (!latch_driven.empty()) {
 			// map from a driven signal to the corresponding enable/staging signal
 			// TODO: SigSig needlessly costly here
-			Yosys::dict<VariableBit, RTLIL::SigSig> signaling;
+			hashlib::dict<VariableBit, RTLIL::SigSig> signaling;
 			RTLIL::SigSpec enables, all_staging;
 
 			latch_driven.sort_and_unify();

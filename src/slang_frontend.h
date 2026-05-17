@@ -25,16 +25,14 @@
 #include "slang/util/Enum.h"
 #include "kernel/rtlil.h"
 
-// work around yosys PR #4524 changing the way you ask for pointer hashing
-#if YS_HASHING_VERSION <= 0
-#define YS_HASH_PTR_OPS ,Yosys::hashlib::hash_ptr_ops
-#else
-#define YS_HASH_PTR_OPS
-#endif
+namespace slang_frontend {
+// pull in a copy of hashlib into the slang_frontend namespace
+#include "hashlib.h"
 
-template<> struct Yosys::hashlib::hash_ops<const slang::ast::Symbol*> : Yosys::hashlib::hash_ptr_ops {};
-template<> struct Yosys::hashlib::hash_ops<const slang::ast::Scope*> : Yosys::hashlib::hash_ptr_ops {};
-template<> struct Yosys::hashlib::hash_ops<void*> : Yosys::hashlib::hash_ptr_ops {};
+template<> struct hashlib::hash_ops<const slang::ast::Symbol*> : hashlib::hash_ptr_ops {};
+template<> struct hashlib::hash_ops<const slang::ast::Scope*> : hashlib::hash_ptr_ops {};
+template<> struct hashlib::hash_ops<void*> : hashlib::hash_ptr_ops {};	
+}
 
 namespace slang {
 	struct ConstantRange;
@@ -118,11 +116,7 @@ public:
 	bool operator==(const Variable &other) const { return hash_label() == other.hash_label(); }
 	bool operator<(const Variable &other) const;
 
-#if YS_HASHING_VERSION >= 1
-	[[nodiscard]] Yosys::Hasher hash_into(Yosys::Hasher h) const { h.eat(hash_label()); return h; }
-#else
-	int hash() const { return Yosys::hash_ops<HashLabel>::hash(hash_label()); }
-#endif
+	[[nodiscard]] hashlib::Hasher hash_into(hashlib::Hasher h) const { h.eat(hash_label()); return h; }
 	std::string text() const;
 
 private:
@@ -153,7 +147,7 @@ struct EvalContext {
 
 	// Scope nest level tracking to isolate automatic variables of reentrant
 	// scopes (i.e. functions)
-	Yosys::dict<const ast::Scope *, int> scope_nest_level;
+	hashlib::dict<const ast::Scope *, int> scope_nest_level;
 
 	int find_nest_level(const ast::Scope *scope);
 	Variable variable(const ast::ValueSymbol &symbol);
@@ -221,7 +215,7 @@ private:
 	int limit;
 	int unrolling = 0;
 	int unroll_counter = 0;
-	Yosys::pool<const ast::Statement * YS_HASH_PTR_OPS> loops;
+	hashlib::pool<const ast::Statement *> loops;
 	bool error_issued = false;
 };
 
@@ -270,14 +264,14 @@ public:
 #endif
 
 	// only used when timing.kind==ProcessTiming::Initial
-	Yosys::dict<VariableBit, ir::Trit> initial_locals_state;
+	hashlib::dict<VariableBit, ir::Trit> initial_locals_state;
 
 	std::vector<RTLIL::Cell *> preceding_memwr;
 
 private:
 	int flag_counter = 0;
-	Yosys::dict<Variable, slang::SourceLocation> seen_blocking_assignment;
-	Yosys::dict<Variable, slang::SourceLocation> seen_nonblocking_assignment;
+	hashlib::dict<Variable, slang::SourceLocation> seen_blocking_assignment;
+	hashlib::dict<Variable, slang::SourceLocation> seen_nonblocking_assignment;
 
 public:
 	ProceduralContext(NetlistContext &netlist, ProcessTiming &timing);
@@ -331,7 +325,7 @@ private:
 
 public:
 	struct VariableState {
-		using Map = Yosys::dict<VariableBit, ir::Net>;
+		using Map = hashlib::dict<VariableBit, ir::Net>;
 
 		Map visible_assignments;
 
@@ -341,7 +335,7 @@ public:
 
 		struct Snapshot {
 			Map revert;
-			Yosys::pool<VariableBit> revert_erase;
+			hashlib::pool<VariableBit> revert_erase;
 		};
 
 		void save(Snapshot &snap);
@@ -616,22 +610,22 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 	Yosys::dict<RTLIL::IdString, Memory> emitted_mems;
 
 	// Used to implement modports on `realm`
-	Yosys::dict<const ast::Scope*, std::string YS_HASH_PTR_OPS> scopes_remap;
+	hashlib::dict<const ast::Scope*, std::string> scopes_remap;
 
 	// Cache per-symbol signal
-	Yosys::dict<const ast::Symbol*, ir::Value> wire_cache;
+	hashlib::dict<const ast::Symbol*, ir::Value> wire_cache;
 
-	Yosys::pool<VariableBit> driven_variables;
+	hashlib::pool<VariableBit> driven_variables;
 
 	// Driven by a register, including a latch
-	Yosys::pool<VariableBit> register_driven_variables;
+	hashlib::pool<VariableBit> register_driven_variables;
 
 	// wor/wand support
-	Yosys::dict<VariableBit, ir::Value> special_net_drivers;
+	hashlib::dict<VariableBit, ir::Value> special_net_drivers;
 	std::vector<const ast::NetSymbol *> special_net_symbols;
 
 	// Initial variable state
-	Yosys::dict<VariableBit, ir::Trit> initial_state;
+	hashlib::dict<VariableBit, ir::Trit> initial_state;
 
 	// Flag to disable elaboration; we set this when `scopes_remap` is
 	// incomplete due to prior errors
@@ -650,7 +644,7 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 	NetlistContext(const NetlistContext&) = delete;
 	NetlistContext& operator=(const NetlistContext&) = delete;
 
-	Yosys::pool<const ast::Symbol *> detected_memories;
+	hashlib::pool<const ast::Symbol *> detected_memories;
 	bool is_inferred_memory(const ast::Symbol &symbol);
 	bool is_inferred_memory(const ast::Expression &expr);
 

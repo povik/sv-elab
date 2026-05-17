@@ -210,7 +210,7 @@ struct SwitchHelper
 			updated_anybranch.append(std::get<1>(branch));
 		updated_anybranch.sort_and_unify();
 
-		Yosys::pool<Variable> eos_variables;
+		hashlib::pool<Variable> eos_variables;
 		auto &va = vstate.visible_assignments;
 		for (auto bit : updated_anybranch)
 			if (bit.variable.kind != Variable::Static && !va.count(bit))
@@ -349,7 +349,7 @@ struct SwitchHelper
 		updated_anybranch.sort_and_unify();
 
 		// end-of-scope variables
-		Yosys::pool<Variable> eos_variables;
+		hashlib::pool<Variable> eos_variables;
 
 		auto &va = vstate.visible_assignments;
 		for (auto bit : updated_anybranch)
