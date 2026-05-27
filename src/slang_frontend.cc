@@ -852,11 +852,21 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 
 	for (int i = 0; i < num_cycles; i++) {
 		past_wire = netlist.add_placeholder_signal(width, "$past");
-		netlist.add_dff(netlist.new_id("past"),
-			trigger.signal,
-			prev_val,
-			past_wire,
-			trigger.edge_polarity);
+		if (procedural->timing.background_enable == RTLIL::S1) {
+			netlist.add_dff(netlist.new_id("past"),
+				trigger.signal,
+				prev_val,
+				past_wire,
+				trigger.edge_polarity);
+		} else {
+			netlist.add_dffe(netlist.new_id("past"),
+				trigger.signal,
+				procedural->timing.background_enable,
+				prev_val,
+				past_wire,
+				trigger.edge_polarity,
+				true);
+		}
 		prev_val = past_wire;
 	}
 
@@ -1857,6 +1867,13 @@ public:
 		RTLIL::Process *proc = netlist.canvas->addProcess(netlist.new_id());
 		transfer_attrs(netlist, timed.stmt, proc);
 
+		RTLIL::SigSpec clock_enable = RTLIL::S1;
+		if (clock.iffCondition)
+			clock_enable = netlist.ReduceBool(netlist.eval(*clock.iffCondition));
+		bool has_clock_enable = !(clock_enable.is_fully_def() &&
+								  clock_enable.size() == 1 &&
+								  clock_enable.as_bool());
+
 		ProcessTiming prologue_timing(ProcessTiming::EdgeTriggered);
 		{
 			prologue_timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
@@ -1912,7 +1929,7 @@ public:
 
 		{
 			ProcessTiming timing(ProcessTiming::EdgeTriggered);
-			timing.background_enable = netlist.LogicNot(prior_branch_taken);
+			timing.background_enable = netlist.LogicAnd(netlist.LogicNot(prior_branch_taken), clock_enable);
 			timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
 
 			ProceduralContext sync_procedure(netlist, timing);
@@ -1938,6 +1955,9 @@ public:
 						std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
 						if (clock.edge == ast::EdgeKind::BothEdges) {
+							if (has_clock_enable)
+								netlist.add_diag(diag::IffUnsupported, clock.iffCondition->sourceRange);
+
 							netlist.add_dual_edge_aldff(base_name,
 														timing.triggers[0].signal,
 														RTLIL::S0,
@@ -1945,6 +1965,14 @@ public:
 														netlist.convert_static(named_chunk),
 														RTLIL::SigSpec(RTLIL::Sx, (int)named_chunk.bitwidth()),
 														true);
+						} else if (has_clock_enable) {
+							netlist.add_dffe(base_name,
+											timing.triggers[0].signal,
+											timing.background_enable,
+											assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
+											netlist.convert_static(named_chunk),
+											timing.triggers[0].edge_polarity,
+											true);
 						} else {
 							netlist.add_dff(base_name,
 											timing.triggers[0].signal,
@@ -1974,6 +2002,9 @@ public:
 							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
 							if (clock.edge == ast::EdgeKind::BothEdges) {
+								if (has_clock_enable)
+									netlist.add_diag(diag::IffUnsupported, clock.iffCondition->sourceRange);
+
 								netlist.add_dual_edge_aldff(base_name,
 															timing.triggers[0].signal,
 															aloads[0].trigger,
@@ -1982,10 +2013,17 @@ public:
 															aloads[0].values.evaluate(netlist, named_chunk),
 															aloads[0].trigger_polarity);
 							} else {
+								RTLIL::SigSpec next_value =
+										has_clock_enable
+												? netlist.Mux(netlist.convert_static(named_chunk),
+															  assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
+															  clock_enable)
+												: assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth());
+
 								netlist.add_aldff(base_name,
 												  timing.triggers[0].signal,
 												  aloads[0].trigger,
-												  assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
+												  next_value,
 												  netlist.convert_static(named_chunk),
 												  aloads[0].values.evaluate(netlist, named_chunk),
 												  timing.triggers[0].edge_polarity,
@@ -2009,11 +2047,11 @@ public:
 
 							netlist.add_dffe(base_name,
 											 timing.triggers[0].signal,
-											 aloads[0].trigger,
+											 has_clock_enable ? timing.background_enable : aloads[0].trigger,
 											 assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
 											 netlist.convert_static(named_chunk),
 											 timing.triggers[0].edge_polarity,
-											 !aloads[0].trigger_polarity);
+											 has_clock_enable ? true : !aloads[0].trigger_polarity);
 						}
 					}
 				} else {
