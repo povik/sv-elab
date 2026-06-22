@@ -89,6 +89,7 @@ extern slang::DiagCode ReadmemAddressOutsideOfRange;
 extern slang::DiagCode ReadmemWordsRangeMismatch;
 extern slang::DiagCode ReadmemBadBinaryDigit;
 extern slang::DiagCode NoIgnoreUnknownModules;
+extern slang::DiagCode HierarchicalRefOutsideModulesUnsupported;
 
 void setup_messages(slang::DiagnosticEngine &engine);
 }; // namespace diag
