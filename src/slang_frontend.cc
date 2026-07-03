@@ -3674,6 +3674,7 @@ struct SlangFrontend : Frontend {
 		(void) filename;
 		log_header(design, "Executing SLANG frontend.\n");
 
+		auto guard = slang::OS::captureOutput([&](std::string_view text, bool) { log("%s", text); });
 		// names of RTLIL modules added in this invocation; does not include blackboxes
 		std::vector<RTLIL::IdString> emitted_module_names;
 		slang::driver::Driver driver;
@@ -3949,6 +3950,7 @@ struct TestSlangExprPass : Pass {
 	{
 		log_header(d, "Executing TEST_SLANGEXPR pass.\n");
 
+		auto guard = slang::OS::captureOutput([&](std::string_view text, bool) { log("%s", text); });
 		slang::driver::Driver driver;
 		driver.addStandardArgs();
 		SynthesisSettings settings;
