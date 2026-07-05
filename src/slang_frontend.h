@@ -401,6 +401,10 @@ struct RTLILBuilder {
 	void add_aldff(std::string_view name, const RTLIL::SigSpec &clk, const RTLIL::SigSpec &aload,
 				   const RTLIL::SigSpec &d, const RTLIL::SigSpec &q, const RTLIL::SigSpec &ad,
 				   bool clk_polarity = true, bool aload_polarity = true);
+	void add_aldffe(std::string_view name, const RTLIL::SigSpec &clk, const RTLIL::SigSpec &en,
+				   const RTLIL::SigSpec &aload,
+				   const RTLIL::SigSpec &d, const RTLIL::SigSpec &q, const RTLIL::SigSpec &ad,
+				   bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true);
 
     // Create a placeholder signal which will be connected to a driver using `connect` later
 	SigSpec add_placeholder_signal(uint64_t width, std::string_view name_suggestion=""sv, bool public_name=false);

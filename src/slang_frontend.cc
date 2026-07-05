@@ -852,21 +852,13 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 
 	for (int i = 0; i < num_cycles; i++) {
 		past_wire = netlist.add_placeholder_signal(width, "$past");
-		if (procedural->timing.background_enable == RTLIL::S1) {
-			netlist.add_dff(netlist.new_id("past"),
-				trigger.signal,
-				prev_val,
-				past_wire,
-				trigger.edge_polarity);
-		} else {
-			netlist.add_dffe(netlist.new_id("past"),
-				trigger.signal,
-				procedural->timing.background_enable,
-				prev_val,
-				past_wire,
-				trigger.edge_polarity,
-				true);
-		}
+		netlist.add_dffe(netlist.new_id("past"),
+			trigger.signal,
+			procedural->timing.background_enable,
+			prev_val,
+			past_wire,
+			trigger.edge_polarity,
+			true);
 		prev_val = past_wire;
 	}
 
@@ -1867,13 +1859,6 @@ public:
 		RTLIL::Process *proc = netlist.canvas->addProcess(netlist.new_id());
 		transfer_attrs(netlist, timed.stmt, proc);
 
-		RTLIL::SigSpec event_guard = RTLIL::S1;
-		if (clock.iffCondition)
-			event_guard = netlist.ReduceBool(netlist.eval(*clock.iffCondition));
-		bool has_event_guard = !(event_guard.is_fully_def() &&
-								 event_guard.size() == 1 &&
-								 event_guard.as_bool());
-
 		ProcessTiming prologue_timing(ProcessTiming::EdgeTriggered);
 		{
 			prologue_timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
@@ -1928,6 +1913,10 @@ public:
 		}
 
 		{
+			RTLIL::SigSpec event_guard = RTLIL::S1;
+			if (clock.iffCondition)
+				event_guard = netlist.ReduceBool(netlist.eval(*clock.iffCondition));
+
 			ProcessTiming timing(ProcessTiming::EdgeTriggered);
 			timing.background_enable = netlist.LogicAnd(netlist.LogicNot(prior_branch_taken), event_guard);
 			timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
@@ -1948,14 +1937,13 @@ public:
 				transfer_attrs(netlist, symbol, guard);
 
 				if (aloads.empty()) {
-
 					for (auto [named_chunk, name] : generate_subfield_names(driven_chunk, type)) {
 						log_assert(named_chunk.variable.get_symbol() != nullptr);
 						auto symbol = named_chunk.variable.get_symbol();
 						std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
 						if (clock.edge == ast::EdgeKind::BothEdges) {
-							if (has_event_guard)
+							if (clock.iffCondition)
 								netlist.add_diag(diag::IffUnsupported, clock.iffCondition->sourceRange);
 
 							netlist.add_dual_edge_aldff(base_name,
@@ -1965,20 +1953,14 @@ public:
 														netlist.convert_static(named_chunk),
 														RTLIL::SigSpec(RTLIL::Sx, (int)named_chunk.bitwidth()),
 														true);
-						} else if (has_event_guard) {
+						} else {
 							netlist.add_dffe(base_name,
 											timing.triggers[0].signal,
-											timing.background_enable,
+											event_guard,
 											assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
 											netlist.convert_static(named_chunk),
 											timing.triggers[0].edge_polarity,
 											true);
-						} else {
-							netlist.add_dff(base_name,
-											timing.triggers[0].signal,
-											assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
-											netlist.convert_static(named_chunk),
-											timing.triggers[0].edge_polarity);
 						}
 					}
 				} else if (aloads.size() == 1) {
@@ -2002,7 +1984,7 @@ public:
 							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
 							if (clock.edge == ast::EdgeKind::BothEdges) {
-								if (has_event_guard)
+								if (clock.iffCondition)
 									netlist.add_diag(diag::IffUnsupported, clock.iffCondition->sourceRange);
 
 								netlist.add_dual_edge_aldff(base_name,
@@ -2013,20 +1995,17 @@ public:
 															aloads[0].values.evaluate(netlist, named_chunk),
 															aloads[0].trigger_polarity);
 							} else {
-								RTLIL::SigSpec next_value =
-											has_event_guard
-													? netlist.Mux(netlist.convert_static(named_chunk),
-																  assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
-																  event_guard)
-													: assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth());
+								RTLIL::SigSpec next_value = assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth());
 
-								netlist.add_aldff(base_name,
+								netlist.add_aldffe(base_name,
 												  timing.triggers[0].signal,
+												  event_guard,
 												  aloads[0].trigger,
 												  next_value,
 												  netlist.convert_static(named_chunk),
 												  aloads[0].values.evaluate(netlist, named_chunk),
 												  timing.triggers[0].edge_polarity,
+												  /* en_polarity */ true,
 												  aloads[0].trigger_polarity);
 							}
 						}
@@ -2045,6 +2024,7 @@ public:
 							auto symbol = named_chunk.variable.get_symbol();
 							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
+							bool has_event_guard = !(event_guard.is_fully_def() && event_guard.as_bool());
 							netlist.add_dffe(base_name,
 											 timing.triggers[0].signal,
 											 has_event_guard ? timing.background_enable : aloads[0].trigger,

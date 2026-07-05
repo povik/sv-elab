@@ -144,7 +144,7 @@ DiagGroup sanity("sanity", {EdgeImplicitMixing});
 void setup_messages(slang::DiagnosticEngine &engine)
 {
 	// clang-format off
-	engine.setMessage(IffUnsupported, "iff qualifier will not be synthesized");
+	engine.setMessage(IffUnsupported, "iff qualifier not supported in combination with this event");
 	engine.setMessage(SignalSensitivityAmbiguous, "non-edge sensitivity on a signal will be synthesized as @* sensitivity");
 	engine.setSeverity(SignalSensitivityAmbiguous, DiagnosticSeverity::Warning);
 	engine.setMessage(EdgeImplicitMixing, "mixing of implicit and edge sensitivity");

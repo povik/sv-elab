@@ -523,6 +523,11 @@ void RTLILBuilder::add_dffe(std::string_view name, const RTLIL::SigSpec &clk,
 		const RTLIL::SigSpec &en, const RTLIL::SigSpec &d, const RTLIL::SigSpec &q,
 		bool clk_polarity, bool en_polarity)
 {
+	if (en.is_fully_def() && en.as_bool() == en_polarity) {
+		add_dff(name, clk, d, q, clk_polarity);
+		return;
+	}
+
 	RTLIL::Cell *cell =
 			canvas->addDffe(canvas->uniquify(id(name)), clk, en, d, q, clk_polarity, en_polarity);
 	bless_cell(cell);
@@ -534,6 +539,20 @@ void RTLILBuilder::add_aldff(std::string_view name, const RTLIL::SigSpec &clk,
 {
 	RTLIL::Cell *cell = canvas->addAldff(
 			canvas->uniquify(id(name)), clk, aload, d, q, ad, clk_polarity, aload_polarity);
+	bless_cell(cell);
+}
+
+void RTLILBuilder::add_aldffe(std::string_view name, const RTLIL::SigSpec &clk,
+		const RTLIL::SigSpec &en, const RTLIL::SigSpec &aload, const RTLIL::SigSpec &d,
+		const RTLIL::SigSpec &q, const RTLIL::SigSpec &ad, bool clk_polarity, bool en_polarity,
+		bool aload_polarity)
+{
+	if (en.is_fully_def() && en.as_bool() == en_polarity) {
+		return add_aldff(name, clk, aload, d, q, ad, clk_polarity, aload_polarity);
+	}
+
+	RTLIL::Cell *cell = canvas->addAldffe(canvas->uniquify(id(name)), clk, en, aload, d, q, ad,
+			clk_polarity, en_polarity, aload_polarity);
 	bless_cell(cell);
 }
 
