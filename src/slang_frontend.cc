@@ -2644,46 +2644,6 @@ public:
 		}
 	}
 
-	void handle(const ast::UninstantiatedDefSymbol &sym)
-	{
-		if (sym.isChecker()) {
-			netlist.add_diag(diag::LangFeatureUnsupported, sym.location);
-			return;
-		}
-
-		if (!sym.paramExpressions.empty()) {
-			netlist.add_diag(diag::NoParamsOnUnkBboxes, sym.location);
-			return;
-		}
-
-		RTLIL::Cell *cell = netlist.canvas->addCell(netlist.id(sym),
-													id(sym.definitionName));
-		cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
-		transfer_attrs(netlist, sym, cell);
-
-		auto port_names = sym.getPortNames();
-		auto port_conns = sym.getPortConnections();
-		ast_invariant(sym, port_names.size() == port_conns.size());
-		for (int i = 0; i < (int) port_names.size(); i++) {
-			auto &expr = port_conns[i]->as<ast::SimpleAssertionExpr>().expr;
-			RTLIL::IdString port_id = port_names[i].empty()
-				? Yosys::stringf("$%d", i + 1)
-				: RTLIL::escape_id(std::string{port_names[i]});
-
-			VariableBits vbits = netlist.eval.lhs(expr, true);
-			if (!vbits.has_dummy_bits()) {
-				netlist.register_driven(vbits);
-				cell->setPort(port_id, netlist.convert_static(vbits));
-			} else {
-				if (!port_names[i].empty()) {
-					auto &d = netlist.add_diag(diag::GuessingInputPort, expr.sourceRange);
-					d << port_names[i] << sym.definitionName;
-				}
-				cell->setPort(port_id, netlist.eval(expr));
-			}
-		}
-	}
-
 	void handle(const ast::ClockingBlockSymbol& symbol) {
 		if (!netlist.settings.ignore_timing.value_or(false))
 			netlist.add_diag(diag::GenericTimingUnsyn, symbol.location);
@@ -3537,6 +3497,10 @@ void catch_forbidden_options(slang::driver::Driver &driver) {
 			engine.issue(demotion_diag);
 			engine.setSeverity(slang::diag::UnknownSystemName, slang::DiagnosticSeverity::Error);
 		}
+	}
+
+	if (driver.options.compilationFlags[ast::CompilationFlags::IgnoreUnknownModules]) {
+		engine.issue({diag::NoIgnoreUnknownModules, slang::SourceLocation::NoLocation});
 	}
 }
 

@@ -134,6 +134,7 @@ DiagCode ReadmemInvalidAddress(DiagSubsystem::Netlist, 1080);
 DiagCode ReadmemAddressOutsideOfRange(DiagSubsystem::Netlist, 1081);
 DiagCode ReadmemWordsRangeMismatch(DiagSubsystem::Netlist, 1082);
 DiagCode ReadmemBadBinaryDigit(DiagSubsystem::Netlist, 1083);
+DiagCode NoIgnoreUnknownModules(DiagSubsystem::Netlist, 1084);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -353,6 +354,9 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(ReadmemBadBinaryDigit, "digit larger than 1 is used in '{}'");
 	engine.setSeverity(ReadmemBadBinaryDigit, DiagnosticSeverity::Error);
+
+	engine.setMessage(NoIgnoreUnknownModules, "'--ignore-unknown-modules' no longer supported with yosys-slang; visit https://github.com/povik/yosys-slang/wiki/No-unknown-modules");
+	engine.setSeverity(NoIgnoreUnknownModules, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag
