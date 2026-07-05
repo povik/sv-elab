@@ -249,6 +249,12 @@ public:
 	UnrollLimitTracking unroll_limit;
 	NetlistContext &netlist;
 	ProcessTiming &timing;
+
+	// Does `timing` faithfully match the triggers on the always procedure?
+	// This will be false if we have inferred the asynchronous reset pattern
+	// and reinterpret the timing within synchronous/asynchronous branches
+	bool timing_matches_process = true;
+
 	EvalContext eval;
 	int effects_priority = 0;
 
@@ -401,6 +407,10 @@ struct RTLILBuilder {
 	void add_aldff(std::string_view name, const RTLIL::SigSpec &clk, const RTLIL::SigSpec &aload,
 				   const RTLIL::SigSpec &d, const RTLIL::SigSpec &q, const RTLIL::SigSpec &ad,
 				   bool clk_polarity = true, bool aload_polarity = true);
+	void add_aldffe(std::string_view name, const RTLIL::SigSpec &clk, const RTLIL::SigSpec &en,
+				   const RTLIL::SigSpec &aload,
+				   const RTLIL::SigSpec &d, const RTLIL::SigSpec &q, const RTLIL::SigSpec &ad,
+				   bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true);
 
     // Create a placeholder signal which will be connected to a driver using `connect` later
 	SigSpec add_placeholder_signal(uint64_t width, std::string_view name_suggestion=""sv, bool public_name=false);
@@ -542,6 +552,7 @@ struct NetlistContext : RTLILBuilder, public DiagnosticIssuer {
 	// Returns an ID string to use in the netlist to represent the given symbol.
 	std::string id(const ast::Symbol &sym);
 	std::string id(const ast::ValueSymbol &sym);
+	std::string unescaped_id(const ast::Symbol &sym);
 	std::string hdlname(const ast::Symbol &sym);
 
 	const RTLIL::SigSpec& add_wire(const ast::ValueSymbol &sym);

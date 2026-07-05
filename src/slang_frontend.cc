@@ -82,6 +82,8 @@
 #include "async_pattern.h"
 #include "variables.h"
 
+using namespace std::string_literals;
+
 namespace slang_frontend {
 
 void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
@@ -823,7 +825,8 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange);
 		return RTLIL::SigSpec(RTLIL::Sx, (int) call.type->getBitstreamWidth());
 	}
-	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit || procedural->timing.triggers.size() != 1) {
+	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit
+			|| procedural->timing.triggers.size() != 1 || !procedural->timing_matches_process) {
 		netlist.add_diag(diag::SystemFunctionRequireClockedBlock, call.sourceRange) << call.getSubroutineName();
 		return RTLIL::SigSpec(RTLIL::Sx, (int) call.type->getBitstreamWidth());
 	}
@@ -850,11 +853,13 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 
 	for (int i = 0; i < num_cycles; i++) {
 		past_wire = netlist.add_placeholder_signal(width, "$past");
-		netlist.add_dff(netlist.new_id("past"),
+		netlist.add_dffe(netlist.new_id("past"),
 			trigger.signal,
+			procedural->timing.background_enable,
 			prev_val,
 			past_wire,
-			trigger.edge_polarity);
+			trigger.edge_polarity,
+			true);
 		prev_val = past_wire;
 	}
 
@@ -1892,6 +1897,7 @@ public:
 			prior_branch_taken.append(sig_depol);
 
 			ProceduralContext branch(netlist, branch_timing);
+			branch.timing_matches_process = false;
 			EnterAutomaticScopeGuard branch_guard(branch.eval, prologue_block);
 
 			branch.inherit_state(prologue);
@@ -1909,33 +1915,41 @@ public:
 		}
 
 		{
+			RTLIL::SigSpec event_guard = RTLIL::S1;
+			if (clock.iffCondition)
+				event_guard = netlist.ReduceBool(netlist.eval(*clock.iffCondition));
+
 			ProcessTiming timing(ProcessTiming::EdgeTriggered);
-			timing.background_enable = netlist.LogicNot(prior_branch_taken);
+			timing.background_enable = netlist.LogicAnd(netlist.LogicNot(prior_branch_taken), event_guard);
 			timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
 
-			ProceduralContext sync_procedure(netlist, timing);
-			EnterAutomaticScopeGuard guard(sync_procedure.eval, prologue_block);
-			sync_procedure.inherit_state(prologue);
-			sync_body.visit(StatementExecutor(sync_procedure));
-			sync_procedure.copy_case_tree_into(proc->root_case);
+			ProceduralContext sync_branch(netlist, timing);
+			if (!aloads.empty())
+				sync_branch.timing_matches_process = false;
+			EnterAutomaticScopeGuard guard(sync_branch.eval, prologue_block);
+			sync_branch.inherit_state(prologue);
+			sync_body.visit(StatementExecutor(sync_branch));
+			sync_branch.copy_case_tree_into(proc->root_case);
 
 			// FIXME: ignores variables not driven from the sync procedure
-			VariableBits driven = sync_procedure.all_driven();
+			VariableBits driven = sync_branch.all_driven();
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
-				RTLIL::SigSpec assigned = sync_procedure.vstate.evaluate(netlist, driven_chunk);
+				RTLIL::SigSpec assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
 
 				AttributeGuard guard(netlist);
 				transfer_attrs(netlist, symbol, guard);
 
 				if (aloads.empty()) {
-
 					for (auto [named_chunk, name] : generate_subfield_names(driven_chunk, type)) {
 						log_assert(named_chunk.variable.get_symbol() != nullptr);
-						std::string base_name = Yosys::stringf("$driver$%s%s",
-							RTLIL::unescape_id(netlist.id(*named_chunk.variable.get_symbol())).c_str(), name.c_str());
+						auto symbol = named_chunk.variable.get_symbol();
+						std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
 						if (clock.edge == ast::EdgeKind::BothEdges) {
+							if (clock.iffCondition)
+								netlist.add_diag(diag::IffUnsupported, clock.iffCondition->sourceRange);
+
 							netlist.add_dual_edge_aldff(base_name,
 														timing.triggers[0].signal,
 														RTLIL::S0,
@@ -1944,11 +1958,13 @@ public:
 														RTLIL::SigSpec(RTLIL::Sx, (int)named_chunk.bitwidth()),
 														true);
 						} else {
-							netlist.add_dff(base_name,
+							netlist.add_dffe(base_name,
 											timing.triggers[0].signal,
+											event_guard,
 											assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
 											netlist.convert_static(named_chunk),
-											timing.triggers[0].edge_polarity);
+											timing.triggers[0].edge_polarity,
+											true);
 						}
 					}
 				} else if (aloads.size() == 1) {
@@ -1968,10 +1984,13 @@ public:
 						for (auto driven_chunk2 : aldff_q.chunks())
 						for (auto [named_chunk, name] : generate_subfield_names(driven_chunk2, type)) {
 							log_assert(named_chunk.variable.get_symbol() != nullptr);
-							std::string base_name = Yosys::stringf("$driver$%s%s",
-								RTLIL::unescape_id(netlist.id(*named_chunk.variable.get_symbol())).c_str(), name.c_str());
+							auto symbol = named_chunk.variable.get_symbol();
+							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
 							if (clock.edge == ast::EdgeKind::BothEdges) {
+								if (clock.iffCondition)
+									netlist.add_diag(diag::IffUnsupported, clock.iffCondition->sourceRange);
+
 								netlist.add_dual_edge_aldff(base_name,
 															timing.triggers[0].signal,
 															aloads[0].trigger,
@@ -1980,13 +1999,17 @@ public:
 															aloads[0].values.evaluate(netlist, named_chunk),
 															aloads[0].trigger_polarity);
 							} else {
-								netlist.add_aldff(base_name,
+								RTLIL::SigSpec next_value = assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth());
+
+								netlist.add_aldffe(base_name,
 												  timing.triggers[0].signal,
+												  event_guard,
 												  aloads[0].trigger,
-												  assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
+												  next_value,
 												  netlist.convert_static(named_chunk),
 												  aloads[0].values.evaluate(netlist, named_chunk),
 												  timing.triggers[0].edge_polarity,
+												  /* en_polarity */ true,
 												  aloads[0].trigger_polarity);
 							}
 						}
@@ -2001,16 +2024,18 @@ public:
 
 						for (auto driven_chunk2 : dffe_q.chunks())
 						for (auto [named_chunk, name] : generate_subfield_names(driven_chunk2, type)) {
-							std::string base_name = Yosys::stringf("$driver$%s%s",
-								RTLIL::unescape_id(netlist.id(*named_chunk.variable.get_symbol())).c_str(), name.c_str());
+							log_assert(named_chunk.variable.get_symbol() != nullptr);
+							auto symbol = named_chunk.variable.get_symbol();
+							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
+							bool has_event_guard = !(event_guard.is_fully_def() && event_guard.as_bool());
 							netlist.add_dffe(base_name,
 											 timing.triggers[0].signal,
-											 aloads[0].trigger,
+											 has_event_guard ? timing.background_enable : aloads[0].trigger,
 											 assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
 											 netlist.convert_static(named_chunk),
 											 timing.triggers[0].edge_polarity,
-											 !aloads[0].trigger_polarity);
+											 has_event_guard ? true : !aloads[0].trigger_polarity);
 						}
 					}
 				} else {
@@ -3073,6 +3098,11 @@ std::string build_hiername(NetlistContext &netlist, const ast::Symbol &symbol,
 std::string NetlistContext::id(const ast::Symbol &symbol)
 {
 	return RTLIL::escape_id(build_hiername(*this, symbol, "."));
+}
+
+std::string NetlistContext::unescaped_id(const ast::Symbol &symbol)
+{
+	return build_hiername(*this, symbol, ".");
 }
 
 std::string NetlistContext::id(const ast::ValueSymbol &symbol)
