@@ -3591,10 +3591,12 @@ struct SlangFrontend : Frontend {
 		driver.addStandardArgs();
 		SynthesisSettings settings;
 		settings.addOptions(driver.cmdLine);
+		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
 		log("\n");
 		log("    read_slang [options] [filename]\n");
 		log("\n");
-		log("Slang-based SystemVerilog frontend.\n");
+		log("Read SystemVerilog sources and elaborate a design hierarchy into word-level\n");
+		log("netlist form.\n");
 		log("\n");
 		for (auto& opt : driver.cmdLine.getHelpOptions()) { 
 			log("    %s\n", opt.first.c_str());
