@@ -825,7 +825,8 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange);
 		return RTLIL::SigSpec(RTLIL::Sx, (int) call.type->getBitstreamWidth());
 	}
-	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit || procedural->timing.triggers.size() != 1) {
+	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit
+			|| procedural->timing.triggers.size() != 1 || !procedural->timing_matches_process) {
 		netlist.add_diag(diag::SystemFunctionRequireClockedBlock, call.sourceRange) << call.getSubroutineName();
 		return RTLIL::SigSpec(RTLIL::Sx, (int) call.type->getBitstreamWidth());
 	}
@@ -1896,6 +1897,7 @@ public:
 			prior_branch_taken.append(sig_depol);
 
 			ProceduralContext branch(netlist, branch_timing);
+			branch.timing_matches_process = false;
 			EnterAutomaticScopeGuard branch_guard(branch.eval, prologue_block);
 
 			branch.inherit_state(prologue);
@@ -1921,17 +1923,19 @@ public:
 			timing.background_enable = netlist.LogicAnd(netlist.LogicNot(prior_branch_taken), event_guard);
 			timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
 
-			ProceduralContext sync_procedure(netlist, timing);
-			EnterAutomaticScopeGuard guard(sync_procedure.eval, prologue_block);
-			sync_procedure.inherit_state(prologue);
-			sync_body.visit(StatementExecutor(sync_procedure));
-			sync_procedure.copy_case_tree_into(proc->root_case);
+			ProceduralContext sync_branch(netlist, timing);
+			if (!aloads.empty())
+				sync_branch.timing_matches_process = false;
+			EnterAutomaticScopeGuard guard(sync_branch.eval, prologue_block);
+			sync_branch.inherit_state(prologue);
+			sync_body.visit(StatementExecutor(sync_branch));
+			sync_branch.copy_case_tree_into(proc->root_case);
 
 			// FIXME: ignores variables not driven from the sync procedure
-			VariableBits driven = sync_procedure.all_driven();
+			VariableBits driven = sync_branch.all_driven();
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
-				RTLIL::SigSpec assigned = sync_procedure.vstate.evaluate(netlist, driven_chunk);
+				RTLIL::SigSpec assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
 
 				AttributeGuard guard(netlist);
 				transfer_attrs(netlist, symbol, guard);

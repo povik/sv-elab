@@ -249,6 +249,12 @@ public:
 	UnrollLimitTracking unroll_limit;
 	NetlistContext &netlist;
 	ProcessTiming &timing;
+
+	// Does `timing` faithfully match the triggers on the always procedure?
+	// This will be false if we have inferred the asynchronous reset pattern
+	// and reinterpret the timing within synchronous/asynchronous branches
+	bool timing_matches_process = true;
+
 	EvalContext eval;
 	int effects_priority = 0;
 
