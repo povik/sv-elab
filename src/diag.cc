@@ -135,6 +135,7 @@ DiagCode ReadmemAddressOutsideOfRange(DiagSubsystem::Netlist, 1081);
 DiagCode ReadmemWordsRangeMismatch(DiagSubsystem::Netlist, 1082);
 DiagCode ReadmemBadBinaryDigit(DiagSubsystem::Netlist, 1083);
 DiagCode NoIgnoreUnknownModules(DiagSubsystem::Netlist, 1084);
+DiagCode HierarchicalRefOutsideModulesUnsupported(DiagSubsystem::Netlist, 1085);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -357,6 +358,9 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(NoIgnoreUnknownModules, "'--ignore-unknown-modules' no longer supported with yosys-slang; visit https://github.com/povik/yosys-slang/wiki/No-unknown-modules");
 	engine.setSeverity(NoIgnoreUnknownModules, DiagnosticSeverity::Error);
+
+	engine.setMessage(HierarchicalRefOutsideModulesUnsupported, "hierarchical reference outside module hierarchy unsupported");
+	engine.setSeverity(HierarchicalRefOutsideModulesUnsupported, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag
