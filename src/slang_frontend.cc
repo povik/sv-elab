@@ -1753,7 +1753,7 @@ template <typename Func> void visit_interface_elements(const ast::PortConnection
 				hierpath_suffix = save;
 			}
 		},
-		[&](auto &visitor, const ast::ModportSymbol &modport) {
+		[&](auto &, const ast::ModportSymbol &modport) {
 			// To support interface arrays, we need to match all modports
 			// with the same name as ref_modport
 			if (!modport.name.compare(ref_modport.name)) {
