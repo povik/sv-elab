@@ -1719,7 +1719,7 @@ struct HierarchyQueue {
 
 // Helper for visiting the elements of a connected interface array
 // and assigning them generated names
-template <typename Func> void visit_interface_elements(const ast::PortConnection *conn, Func &&visit)
+template <typename Func> void visit_interface_elements(const ast::PortConnection *conn, Func &&visit_fn)
 {
 	assert(conn->getIfaceConn().second != nullptr);
 	const ast::Symbol &if_instance = *conn->getIfaceConn().first;
@@ -1757,7 +1757,7 @@ template <typename Func> void visit_interface_elements(const ast::PortConnection
 			// To support interface arrays, we need to match all modports
 			// with the same name as ref_modport
 			if (!modport.name.compare(ref_modport.name)) {
-				visit(modport, hierpath_suffix);
+				visit_fn(modport, hierpath_suffix);
 			}
 		}
 	));
