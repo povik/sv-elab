@@ -171,7 +171,7 @@ cc_library(
     visibility = ["@yosys-slang//:__subpackages__"],
     deps = [
         "@fmt",
-        "@boost//regex:regex",
+        "@boost.regex//:boost.regex",
         "@tomlplusplus//:tomlplusplus",
     ],
 )
