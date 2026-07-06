@@ -3295,6 +3295,7 @@ bool NetlistContext::should_dissolve(const ast::InstanceSymbol &sym, slang::Diag
 			auto &note = why_not_dissolved->addNote(diag::NoteModuleNotDissolvedBecauseKeepHierarchy, sym.location);
 			note << sym.body.name;
 		}
+		return false;
 	default:
 		return false;
 	}
