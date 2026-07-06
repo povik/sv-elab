@@ -69,6 +69,7 @@ jobs:
           fail_ci_if_error: true
           files: build/yosys-slang.info
           verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
       - name: Print ccache statistics
         run: |
           ccache -s
