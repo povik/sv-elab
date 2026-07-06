@@ -52,9 +52,10 @@ Check out the repository including the submodule, e.g. with
 
     git clone --recursive https://github.com/povik/sv-elab
 
-Then build both slang and the `build/slang.so` plugin for Yosys:
+Then build sv-elab (incl. the bundled `slang` library) as a Yosys plugin:
 
-    make -j$(nproc)
+    cmake -B build .
+    make -C build -j$(nproc)
 
 Use a custom `-jN` switch to build with `N` concurrent processes instead of matching the number of cores.
 

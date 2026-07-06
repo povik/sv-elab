@@ -93,7 +93,8 @@ jobs:
           sudo cp -r -t / tests/third_party/yosys/*
       - name: Build sv-elab Yosys plugin
         run: |
-          make -j$(nproc) CMAKE_FLAGS="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=Debug"
+          cmake -B build . -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=Debug
+          make -C build -j$(nproc)
       - name: Test sv-elab Yosys plugin
         run: |
           cd build
