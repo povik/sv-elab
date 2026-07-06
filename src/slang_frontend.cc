@@ -3466,7 +3466,7 @@ struct SlangVersionPass : Pass {
 		if (args.size() != 1)
 			cmd_error(args, 1, "Extra argument");
 
-		log("yosys-slang revision %s\n", YOSYS_SLANG_REVISION);
+		log("sv-elab revision %s\n", YOSYS_SLANG_REVISION);
 		log("slang revision %s\n", SLANG_REVISION);
 	}
 } SlangVersionPass;

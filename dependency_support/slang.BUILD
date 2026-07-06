@@ -7,7 +7,7 @@ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_license//rules:license.bzl", "license")
 load(
-    "@yosys-slang//:dependency_support/slang_ext.bzl",
+    "@sv-elab//:dependency_support/slang_ext.bzl",
     "SLANG_VERSION_HASH",
     "SLANG_VERSION_MAJOR",
     "SLANG_VERSION_MINOR",
@@ -168,7 +168,7 @@ cc_library(
         "include",
         "source/ast/builtins",
     ],
-    visibility = ["@yosys-slang//:__subpackages__"],
+    visibility = ["@sv-elab//:__subpackages__"],
     deps = [
         "@fmt",
         "@boost.regex//:boost.regex",

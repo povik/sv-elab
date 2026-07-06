@@ -1,30 +1,26 @@
-# yosys-slang: SystemVerilog frontend
+# sv-elab: SystemVerilog elaborator
 
-*Note:* this tool will be renamed slang-elab soon and, as an option, will be usable independent of Yosys.
+sv-elab elaborates SystemVerilog designs into word-level netlist form. It can be integrated as a software component in synthesis and verification tools. Formerly the project used the name "yosys-slang" and focused on Yosys integration.
 
-yosys-slang is a Yosys plugin providing a new command (`read_slang`) for elaborating SystemVerilog designs.
+sv-elab builds on top of the [slang](https://github.com/MikePopoloski/slang) library to provide comprehensive SystemVerilog support. It supports an (informally defined) synthesizable subset of SystemVerilog in version IEEE 1800-2017 or IEEE 1800-2023.
 
-yosys-slang builds on top of the [slang](https://github.com/MikePopoloski/slang) library to provide comprehensive SystemVerilog support. The plugin supports an (informally defined) synthesizable subset of SystemVerilog in version IEEE 1800-2017 or IEEE 1800-2023.
+Visit [the Feature Support wiki page](https://github.com/povik/sv-elab/wiki/Feature-support).
 
-Visit [the Feature Support wiki page](https://github.com/povik/yosys-slang/wiki/Feature-support).
+## Users
 
-The plugin is available prebuilt as part of
+sv-elab is a component of:
 
- * [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build) from YosysHQ, and
+ * [OpenROAD integrated synthesis tool](https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/syn)
 
- * [IIC-OSIC-TOOLS](https://github.com/iic-jku/iic-osic-tools) from Johannes Kepler University
+ * [Yosys](https://github.com/YosysHQ/yosys) starting with v0.67; some older versions can use sv-elab as a plugin. Such a plugin is available prebuilt as part of
 
-## News
+   * [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build) from YosysHQ, and
 
-<a href="http://asic.ethz.ch/2024/MLEM.html"><img align="right" width="100" height="100" src="docs/mlem.jpg"></a>
-
-*2025/05:* [Koopa](http://asic.ethz.ch/2025/Koopa.html) taped out using yosys-slang.
-
-*2024/12:* ETH Zürich have used yosys-slang for a chip tapeout. [Meet MLEM](http://asic.ethz.ch/2024/MLEM.html).
+   * [IIC-OSIC-TOOLS](https://github.com/iic-jku/iic-osic-tools) from Johannes Kepler University
 
 ## Compatibility
 
-yosys-slang can parse a number of open-source IPs, including:
+sv-elab can parse a number of open-source IPs, including:
 
  * [Black Parrot](https://github.com/black-parrot/black-parrot/)
 
@@ -42,7 +38,9 @@ For details see the [compat suite repository](https://github.com/povik/yosys-sla
 
 ## Building
 
-*Prerequisities:*
+The following instructions are for building a Yosys plugin. Despite sv-elab becoming an integrated part of Yosys starting with v0.67, the option to build a plugin continues to exist. For recent Yosys, a plugin does not conflict with the internal sv-elab version, it overrides it.
+
+*Prerequisites:*
 
  * Yosys installed: supported versions are **0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66**
 
@@ -52,7 +50,7 @@ For details see the [compat suite repository](https://github.com/povik/yosys-sla
 
 Check out the repository including the submodule, e.g. with
 
-    git clone --recursive https://github.com/povik/yosys-slang
+    git clone --recursive https://github.com/povik/sv-elab
 
 Then build both slang and the `build/slang.so` plugin for Yosys:
 
@@ -62,17 +60,17 @@ Use a custom `-jN` switch to build with `N` concurrent processes instead of matc
 
 The built plugin is placed at `build/slang.so`. Copy this file into the Yosys plugin directory, which can be achieved through `make install`, or use a full path to this file (instead of the `slang` shorthand) when loading the plugin.
 
-## Usage
+### Using the plugin
 
-You load the plugin into Yosys on startup by passing the `-m` argument:
+One can load the plugin into Yosys on startup by passing the `-m` argument:
 
     $ yosys -m slang
 
-Or, alternatively, you load the plugin at runtime with the `plugin` command:
+Or, alternatively, one can use the `plugin` command at runtime:
 
     plugin -i slang
 
-After the plugin has been loaded, the frontend is invoked with the `read_slang` command.
+After the plugin has been loaded, reading designs using sv-elab uses the historical `read_slang` command name.
 
 For a full documentation of the command options, see `help read_slang`. The command understands standard [slang options](https://www.sv-lang.com/command-line-ref.html).
 
@@ -96,7 +94,7 @@ While the above rules govern the project's public forums, the primary maintainer
 
 ## Supporters
 
-The following organizations have supported the project and contributed to yosys-slang development:
+The following organizations have supported the project and contributed to sv-elab development:
 
  * [Precision Innovations Inc](https://precisioninno.com/)
 
@@ -110,9 +108,9 @@ The following organizations have supported the project and contributed to yosys-
 
 ## License
 
-yosys-slang is distributed under the ISC license, see `LICENSE`.
+sv-elab is distributed under the ISC license, see `LICENSE`.
 
-In addition, yosys-slang embeds
+In addition, sv-elab embeds
 
  * slang, Copyright (c) Michael Popoloski, see `third_party/slang/` for license information 
  * {fmt}, Copyright (c) Victor Zverovich and {fmt} contributors, see `third_party/fmt/` for license information 

@@ -53,12 +53,12 @@ jobs:
         shell: bash
         run: |
           sudo cp -r -t / tests/third_party/yosys/*
-      - name: Build yosys-slang
+      - name: Build sv-elab Yosys plugin
         run: |
           cd build
           cmake .. -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DWITH_COVERAGE=ON
           make
-      - name: Test yosys-slang
+      - name: Test sv-elab Yosys plugin
         run: |
           cd build
           make test

@@ -258,7 +258,7 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setMessage(ProgramUnsupported, "program block will not be synthesized");
 	engine.setSeverity(ProgramUnsupported, DiagnosticSeverity::Warning);
 
-	engine.setMessage(ForbiddenDemotion, "disabling error '{}' is unsupported with yosys-slang");
+	engine.setMessage(ForbiddenDemotion, "disabling error '{}' is unsupported with sv-elab");
 	engine.setSeverity(ForbiddenDemotion, DiagnosticSeverity::Error);
 
 	engine.setMessage(UdpUnsupported, "user-defined primitives unsupported, set '--udp-handling=blackboxes' option to treat it as blackboxes");
@@ -293,7 +293,7 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setMessage(RefUnsupported, "direction 'ref' found on port '{}' unsupported for synthesis");
 	engine.setSeverity(RefUnsupported, DiagnosticSeverity::Error);
 
-	engine.setMessage(InlinedInOutUnsupported, "connection on port '{}' with direction 'inout' cannot be inlined; see yosys-slang issue #143");
+	engine.setMessage(InlinedInOutUnsupported, "connection on port '{}' with direction 'inout' cannot be inlined; see sv-elab issue #143");
 	engine.setSeverity(InlinedInOutUnsupported, DiagnosticSeverity::Error);
 
 	engine.setMessage(PastGatingClockingUnsupported, "$past gating_expr (3rd argument) and clocking_event (4th argument) are not supported");
@@ -356,7 +356,7 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setMessage(ReadmemBadBinaryDigit, "digit larger than 1 is used in '{}'");
 	engine.setSeverity(ReadmemBadBinaryDigit, DiagnosticSeverity::Error);
 
-	engine.setMessage(NoIgnoreUnknownModules, "'--ignore-unknown-modules' no longer supported with yosys-slang; visit https://github.com/povik/yosys-slang/wiki/No-unknown-modules");
+	engine.setMessage(NoIgnoreUnknownModules, "'--ignore-unknown-modules' no longer supported with sv-elab; visit https://github.com/povik/sv-elab/wiki/No-unknown-modules");
 	engine.setSeverity(NoIgnoreUnknownModules, DiagnosticSeverity::Error);
 
 	engine.setMessage(HierarchicalRefOutsideModulesUnsupported, "hierarchical reference outside module hierarchy unsupported");

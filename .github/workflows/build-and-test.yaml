@@ -91,10 +91,10 @@ jobs:
         shell: bash
         run: |
           sudo cp -r -t / tests/third_party/yosys/*
-      - name: Build yosys-slang
+      - name: Build sv-elab Yosys plugin
         run: |
           make -j$(nproc) CMAKE_FLAGS="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=Debug"
-      - name: Test yosys-slang
+      - name: Test sv-elab Yosys plugin
         run: |
           cd build
           ctest --rerun-failed --output-on-failure

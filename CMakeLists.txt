@@ -10,10 +10,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-project(yosys-slang CXX)
+project(sv-elab CXX)
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
-option(BUILD_AS_PLUGIN "Build yosys-slang as a plugin" ON)
+option(BUILD_AS_PLUGIN "Build sv-elab as a Yosys plugin" ON)
 mark_as_advanced(BUILD_AS_PLUGIN)
 
 if (APPLE AND BUILD_AS_PLUGIN)

@@ -1,7 +1,7 @@
-"""yosys-slang plugin: SystemVerilog frontend for yosys via slang."""
+"""sv-elab: SystemVerilog elaborator"""
 
 module(
-    name = "yosys-slang",
+    name = "sv-elab",
     version = "0.0.0",
     bazel_compatibility = [">=7.2.1"],
 )

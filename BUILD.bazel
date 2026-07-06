@@ -1,4 +1,4 @@
-"""yosys-slang plugin: builds slang.so against @yosys//:hdrs.
+"""sv-elab as a yosys plugin: builds slang.so against @yosys//:hdrs.
 """
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
@@ -19,20 +19,20 @@ package(
 
 license(
     name = "license",
-    package_name = "yosys-slang",
+    package_name = "sv-elab",
     license_kinds = ["@rules_license//licenses/spdx:ISC"],
     license_text = "LICENSE",
 )
 
-# yosys-slang's own revision string is taken from MODULE.bazel's
+# sv-elab's own revision string is taken from MODULE.bazel's
 # version field (set by the BCR submitter at release time).
-YOSYS_SLANG_REVISION = module_version() or "unknown"
+SV_ELAB_REVISION = module_version() or "unknown"
 
 expand_template(
     name = "version_h",
     out = "version.h",
     substitutions = {
-        "@YOSYS_SLANG_REVISION@": YOSYS_SLANG_REVISION,
+        "@SV_ELAB_REVISION@": SV_ELAB_REVISION,
         "@SLANG_REVISION@": "{}.{}.{}".format(
             SLANG_VERSION_MAJOR,
             SLANG_VERSION_MINOR,
@@ -42,7 +42,7 @@ expand_template(
     template = "src/version.h.in",
 )
 
-# --- yosys-slang plugin (shared library) ---
+# --- sv-elab yosys plugin (shared library) ---
 
 cc_library(
     name = "yosys_slang_plugin",
