@@ -37,6 +37,13 @@ add_library(yosys-slang ${LIBRARY_TYPE}
 )
 target_include_directories(yosys-slang PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(yosys-slang PRIVATE yosys::yosys slang::slang)
+target_compile_options(yosys-slang PRIVATE 
+    -Wall
+    -Wextra
+    -Werror=unused-variable
+    -Werror=unused-parameter
+    -Werror=unused-function
+)
 
 if (BUILD_AS_PLUGIN)
     set_target_properties(yosys-slang PROPERTIES

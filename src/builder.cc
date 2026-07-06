@@ -367,7 +367,7 @@ SigSpec RTLILBuilder::Biop(
 
 	if (op.in(ID($le), ID($lt), ID($gt), ID($ge)) && !a.empty() && !b.empty()) {
 		int carry = op.in(ID($le), ID($ge)) ? -1 : 1;
-		int al, bl;
+		int al = 0, bl = 0;
 		// Defer to three-valued evaluation over a representation of the operators.
 		// This is a bit much, but I'm writing this tired and don't trust doing it
 		// another way.
