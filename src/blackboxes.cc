@@ -204,6 +204,11 @@ void export_blackbox_to_rtlil(
 
 	inst.body.visit(ast::makeVisitor(
 			[&](auto &, const ast::PortSymbol &port) {
+				if (port.getType().isFloating()) {
+					netlist.add_diag(diag::UnsupportedBitConversion, port.location)
+							<< port.getType().toString();
+					return;
+				}
 				if (!port.getSyntax() || !port.getType().isFixedSize() || !port.internalSymbol ||
 						!port.internalSymbol->getDeclaredType()) {
 					inst.body.addDiag(diag::BboxExportPortWidths, port.location);

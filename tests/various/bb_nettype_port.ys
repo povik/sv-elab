@@ -1,7 +1,10 @@
-# Regression: exporting an empty blackbox whose port type is a user-defined
-# nettype used to segfault. The port's DeclaredType links to the nettype's
-# declaration, so DeclaredType::getTypeSyntax() returns nullptr, which was
-# dereferenced unconditionally in export_blackbox_to_rtlil().
+# Exporting an empty blackbox whose port type is a user-defined nettype used to
+# segfault: the port's DeclaredType links to the nettype's declaration, so
+# DeclaredType::getTypeSyntax() returned nullptr and was dereferenced in
+# export_blackbox_to_rtlil(). A real-typed nettype has no faithful RTLIL bit
+# representation, so it must error out cleanly rather than crash (or silently
+# export a bogus logic net).
+test_slangdiag -expect "value of type 'real' is unsupported for conversion to bits in this context"
 read_slang --empty-blackboxes <<SV
 package NetsPkg;
   nettype real realNet;
@@ -16,4 +19,21 @@ module top();
   rDriver r1(.out());
 endmodule
 SV
-select -assert-mod-count 1 =rDriver =A:blackbox %i
+
+# A bit-representable (logic) nettype port is still exported normally.
+design -reset
+read_slang --empty-blackboxes <<SV
+package BusPkg;
+  nettype logic [3:0] busNet;
+endpackage
+
+module bb
+  import BusPkg::*;
+  (output busNet out);
+endmodule
+
+module top();
+  bb u(.out());
+endmodule
+SV
+select -assert-mod-count 1 =bb =A:blackbox %i
