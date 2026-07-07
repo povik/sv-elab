@@ -1,0 +1,40 @@
+name: "Tag & release"
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  release-artifact:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Extract Version
+        run: |
+          SV_ELAB_VERSION=$(git describe)
+          echo SV_ELAB_VERSION=${SV_ELAB_VERSION} >> $GITHUB_ENV
+
+      - name: Build Source Tar
+        run: |
+          OUT_SRC=sv-elab-${SV_ELAB_VERSION}
+          echo "OUT_SRC=${OUT_SRC}" >> $GITHUB_ENV
+
+          mkdir ../${OUT_SRC}
+          cp -r . ../${OUT_SRC}
+
+          tar --exclude=.git -cvzf ${OUT_SRC}.tar.gz ../${OUT_SRC}
+
+      - name: Upload Source tar
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.OUT_SRC }}-source
+          path: |
+            ${{ env.OUT_SRC }}.tar.gz
