@@ -147,7 +147,8 @@ template <> VariableBits AddressingResolver::extract<VariableBits>(VariableBits 
 	int64_t start = std::clamp<int64_t>(offset * stride, 0, valsize);
 	int64_t end = std::clamp<int64_t>(offset * stride + iwidth, 0, valsize);
 	ret.append(val.extract(start, end - start));
-	ret.append(Variable::dummy(std::clamp<int64_t>(iwidth - (-offset * stride + valsize), 0, iwidth)));
+	ret.append(
+			Variable::dummy(std::clamp<int64_t>(iwidth - (-offset * stride + valsize), 0, iwidth)));
 	log_assert(ret.bitwidth() == width);
 
 	return ret;
