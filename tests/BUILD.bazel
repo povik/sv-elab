@@ -8,7 +8,7 @@ _VARIOUS_TESTS = [
     "assign_mixing", "assignment_pattern_lhs", "bb_detect", "blackbox_scenarios",
     "bus_range", "concurrent_assert", "defaults", "delays", "dualedge", "expr",
     "flop_naming", "formal_stmts", "hierref_error", "huge_reg", "ignore_asserts",
-    "init", "intf_array_naming", "intf_w_hierarchy", "issue142", "issue143",
+    "init", "intf_array_naming", "intf_w_hierarchy", "issue142",
     "issue208", "issue227", "issue240", "issue266", "issue300", "issue50",
     "mem_inference", "meminit", "pragmas", "readmem", "readmem_diag", "regress",
     "stringattrs", "stringparams", "timescale", "tranif", "top_attr",

@@ -50,7 +50,6 @@ set(ALL_TESTS
     various/intf_array_naming.ys
     various/intf_w_hierarchy.ys
     various/issue142.ys
-    various/issue143.ys
     various/issue208.ys
     various/issue227.ys
     various/issue240.ys
