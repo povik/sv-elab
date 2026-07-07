@@ -1,0 +1,47 @@
+load(":yosys_test.bzl", "yosys_test")
+
+_UNIT_TESTS = [
+    "async", "dff", "dualedge", "function_call", "expression_attrs", "latch",
+]
+
+_VARIOUS_TESTS = [
+    "assign_mixing", "assignment_pattern_lhs", "bb_detect", "blackbox_scenarios",
+    "bus_range", "concurrent_assert", "defaults", "delays", "dualedge", "expr",
+    "flop_naming", "formal_stmts", "hierref_error", "huge_reg", "ignore_asserts",
+    "init", "intf_array_naming", "intf_w_hierarchy", "issue142", "issue143",
+    "issue208", "issue227", "issue240", "issue266", "issue300", "issue50",
+    "mem_inference", "meminit", "pragmas", "readmem", "readmem_diag", "regress",
+    "stringattrs", "stringparams", "timescale", "tranif", "top_attr",
+    "unimplemented", "unknown_cells", "toplevel_intf", "wait_test", "expect_test",
+    "program_test", "synthesis_define",
+]
+
+_UNIT_DATA = glob(["unit/*.sv"])
+_VARIOUS_DATA = glob([
+    "various/*.sv", "various/*.v", "various/*.hex", "various/*.bin",
+])
+
+[
+    yosys_test(
+        name = "unit_" + t,
+        script = "unit/%s.ys" % t,
+        data = _UNIT_DATA,
+    )
+    for t in _UNIT_TESTS
+]
+
+[
+    yosys_test(
+        name = "various_" + t,
+        script = "various/%s.ys" % t,
+        data = _VARIOUS_DATA,
+    )
+    for t in _VARIOUS_TESTS
+]
+
+yosys_test(
+    name = "unit_selftests",
+    script = "unit/selftests.tcl",
+    data = _UNIT_DATA,
+)
+
