@@ -143,9 +143,9 @@ end
 EOF
 
 async2sync
-equiv_make -inames dff_past01_gold dff_past01_gate dff_past01_equiv
-equiv_induct dff_past01_equiv
-equiv_status -assert
+miter -equiv -make_assert -flatten dff_past01_gold dff_past01_gate dff_past01_miter
+hierarchy -top dff_past01_miter
+sat -seq 20 -set-init-zero -prove-asserts -verify dff_past01_miter
 
 design -reset
 read_slang <<EOF
@@ -187,6 +187,6 @@ end
 EOF
 
 async2sync
-equiv_make -inames dff_past02_gold dff_past02_gate dff_past02_equiv
-equiv_induct dff_past02_equiv
-equiv_status -assert
+miter -equiv -make_assert -flatten dff_past02_gold dff_past02_gate dff_past02_miter
+hierarchy -top dff_past02_miter
+sat -seq 20 -set-init-zero -prove-asserts -verify dff_past02_miter
