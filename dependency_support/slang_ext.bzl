@@ -8,7 +8,7 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 SLANG_VERSION_MAJOR = 11
 SLANG_VERSION_MINOR = 0
 SLANG_VERSION_PATCH = 0
-SLANG_VERSION_HASH = "6175750969f17289695f94be5105f6006c82eb61"
+SLANG_VERSION_HASH = "8acc660a20b70de48ecec1c7471863e6f4b3ae6f"
 
 def _vendored_slang_extension_impl(ctx):
     git_repository(
