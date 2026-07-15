@@ -40,7 +40,7 @@ void import_blackboxes_from_rtlil(
 
 	BumpAllocator alloc;
 
-	auto token = [&](TokenKind kind, std::string text = "", bool space = false, bool eol = false) {
+	auto token = [&](TokenKind kind, std::string text = "", bool space = false, bool eol = false, std::optional<SVInt> value = {}) {
 		char *ptr = (char *)alloc.allocate(text.size(), 1);
 		memcpy(ptr, text.data(), text.size());
 
@@ -50,7 +50,11 @@ void import_blackboxes_from_rtlil(
 		if (eol)
 			trivia.push_back(Trivia(TriviaKind::EndOfLine, "\n"sv));
 
-		return Token(target, kind, trivia.copy(target), std::string_view{ptr, text.size()},
+		if (value)
+			return Token(target, kind, trivia.copy(target), std::string_view{ptr, text.size()},
+				SourceLocation::NoLocation, *value);
+		else
+			return Token(target, kind, trivia.copy(target), std::string_view{ptr, text.size()},
 				SourceLocation::NoLocation);
 	};
 
@@ -61,6 +65,55 @@ void import_blackboxes_from_rtlil(
 
 		return Token(target, TokenKind::IntegerLiteral, {}, std::string_view{ptr, text.size()},
 				SourceLocation::NoLocation, SVInt(value));
+	};
+
+	auto string_literal = [&](std::string_view value) {
+		std::string text = std::string(value);
+		char *ptr = (char *)alloc.allocate(text.size(), 1);
+		memcpy(ptr, text.data(), text.size());
+
+		auto text_view = std::string_view(ptr, text.size());
+
+		return Token(
+			target,
+			TokenKind::StringLiteral,
+			{},
+			text_view,
+			SourceLocation::NoLocation, text_view);
+	};
+
+	auto make_svint = [&](RTLIL::Const value) {
+		SmallVector<logic_t> digits;
+		digits.reserve(value.size());
+
+		bool unknown = false;
+
+		for (int i = value.size() - 1; i >= 0; i--) {
+			switch (value[i]) {
+			case RTLIL::State::S0:
+				digits.push_back(logic_t(0));
+				break;
+			case RTLIL::State::S1:
+				digits.push_back(logic_t(1));
+				break;
+			case RTLIL::State::Sz:
+				digits.push_back(logic_t::z);
+				unknown = true;
+				break;
+			default:
+			case RTLIL::State::Sx:
+				digits.push_back(logic_t::x);
+				unknown = true;
+				break;
+			}
+		}
+
+		return slang::SVInt::fromDigits(
+			value.size(),
+			slang::LiteralBase::Binary,
+			false,
+			unknown,
+			digits);
 	};
 
 	SmallVector<MemberSyntax *, 16> decls;
@@ -114,11 +167,86 @@ void import_blackboxes_from_rtlil(
 		if (!port_list.empty())
 			port_list.pop_back();
 
+		ParameterPortListSyntax* translatedParameters = nullptr;
+
+		if (!module->avail_parameters.empty()) {
+
+			SmallVector<TokenOrSyntax, 16> paramItems;
+
+			for (auto id : module->avail_parameters)
+			{
+				if (!module->parameter_default_values.count(id))
+					continue;
+
+				const RTLIL::Const value = module->parameter_default_values.at(id);
+
+				ExpressionSyntax *expr = nullptr;
+				if (value.flags & RTLIL::CONST_FLAG_STRING) {
+					expr = alloc.emplace<LiteralExpressionSyntax>(
+						SyntaxKind::StringLiteralExpression,
+						string_literal(value.decode_string()));
+				}
+				else {
+					SVInt sv = make_svint(value);
+					expr = alloc.emplace<IntegerVectorExpressionSyntax>(
+						integer_literal(value.size()),
+						token(TokenKind::IntegerLiteral,
+							"'b",
+							true),
+						token(TokenKind::IntegerLiteral,
+							sv.toString(LiteralBase::Binary, true),
+							true,
+							false,
+							sv));
+				}
+
+				auto decl =
+					alloc.emplace<DeclaratorSyntax>(
+						token(TokenKind::Identifier,
+							RTLIL::unescape_id(id.str()),
+							true),
+						*alloc.emplace<SyntaxList<VariableDimensionSyntax>>(
+							alloc,
+							std::span<const TokenOrSyntax>{}),
+						alloc.emplace<EqualsValueClauseSyntax>(
+							token(TokenKind::Equals),
+							*expr));
+
+				SmallVector<TokenOrSyntax, 2> declItems;
+				declItems.push_back(decl);
+
+				auto paramDecl =
+					alloc.emplace<ParameterDeclarationSyntax>(
+						token(TokenKind::ParameterKeyword),
+						*alloc.emplace<ImplicitTypeSyntax>(
+							Token(),
+							*alloc.emplace<SyntaxList<VariableDimensionSyntax>>(
+								alloc,
+								std::span<const TokenOrSyntax>{}),
+							Token()),
+						*alloc.emplace<SeparatedSyntaxList<DeclaratorSyntax>>(
+							alloc,
+							declItems.copy(target)));
+
+				paramItems.emplace_back(paramDecl);
+				paramItems.push_back(token(TokenKind::Comma));
+			}
+
+			translatedParameters =
+				alloc.emplace<ParameterPortListSyntax>(
+					token(TokenKind::Hash),
+					token(TokenKind::OpenParenthesis),
+					*alloc.emplace<SeparatedSyntaxList<ParameterDeclarationBaseSyntax>>(
+						alloc,
+						paramItems.copy(target)),
+					token(TokenKind::CloseParenthesis));
+		}
+
 		auto header = alloc.emplace<ModuleHeaderSyntax>(SyntaxKind::ModuleHeader,
 				token(TokenKind::ModuleKeyword, "", false, true), Token(),
 				token(TokenKind::Identifier, RTLIL::escape_id(module->name.str()), true),
 				*alloc.emplace<SyntaxList<PackageImportDeclarationSyntax>>(nullptr),
-				nullptr, // parameters: todo
+				translatedParameters,
 				alloc.emplace<AnsiPortListSyntax>(token(TokenKind::OpenParenthesis),
 						*alloc.emplace<SeparatedSyntaxList<MemberSyntax>>(alloc, port_list.copy(target)),
 						token(TokenKind::CloseParenthesis)),
