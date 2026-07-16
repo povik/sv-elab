@@ -169,7 +169,7 @@ void import_blackboxes_from_rtlil(
 
 		ParameterPortListSyntax* translatedParameters = nullptr;
 
-		if (!module->avail_parameters.empty()) {
+		if (!module->avail_parameters.empty() && module->get_blackbox_attribute()) {
 
 			SmallVector<TokenOrSyntax, 16> paramItems;
 
