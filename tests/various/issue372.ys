@@ -1,0 +1,14 @@
+read_slang <<EOF
+module top (input logic [3:0] x, output logic y);
+  assign y = (x < 8'hEE);
+endmodule
+EOF
+sat -verify -prove y 1
+
+design -reset
+read_slang <<EOF
+module top (input logic [3:0] x, output logic y);
+  assign y = (x < 8'bX0001000);
+endmodule
+EOF
+sat -verify -enable_undef -prove y 1'bx

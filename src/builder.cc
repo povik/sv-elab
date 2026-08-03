@@ -313,7 +313,7 @@ int CARRY(int a, int b, int c)
 {
 	if (c > 0)
 		return OR(a, b);
-	else if (c < -1)
+	else if (c < 0)
 		return AND(a, b);
 
 	return OR(AND(a, b), AND(c, OR(a, b)));
@@ -366,15 +366,36 @@ SigSpec RTLILBuilder::Biop(
 	}
 
 	if (op.in(ID($le), ID($lt), ID($gt), ID($ge)) && !a.empty() && !b.empty()) {
+		// See if comparison of partially-constant operands can be evaluated
+		// to a constant by opportunistic constant propagation over a carry
+		// chain structure
+		//
+		// For less or equal, we look at the sign bit of
+		//
+		//  (a - b - 1) = (a + b')
+		//
+		// For less than, we look at the sign bit of
+		//
+		//  (a - b) = (a + b' + 1)
+		//
+		// Where b' is b with all bits complemented
 		int carry = op.in(ID($le), ID($ge)) ? -1 : 1;
 		int al = 0, bl = 0;
-		// Defer to three-valued evaluation over a representation of the operators.
-		// This is a bit much, but I'm writing this tired and don't trust doing it
-		// another way.
-		int width = std::max(a.size(), b.size());
+		// Add +1 to avoid overflows
+		log_assert(a_signed == b_signed);
+		int width = std::max(a.size(), b.size()) + 1;
+
+		bool seen_undef_bit = false;
+
 		for (int i = 0; i < width; i++) {
 			RTLIL::SigBit abit = i < a.size() ? a[i] : (a_signed ? a.msb() : RTLIL::S0);
 			RTLIL::SigBit bbit = i < b.size() ? b[i] : (b_signed ? b.msb() : RTLIL::S0);
+
+			if (abit == RTLIL::Sx || bbit == RTLIL::Sx) {
+				seen_undef_bit = true;
+				break;
+			}
+
 			al = ThreeValued::convert(abit);
 			bl = ThreeValued::convert(bbit);
 			if (op.in(ID($gt), ID($ge)))
@@ -382,9 +403,15 @@ SigSpec RTLILBuilder::Biop(
 			if (i != width - 1)
 				carry = ThreeValued::CARRY(al, ThreeValued::NOT(bl), carry);
 		}
+		if (seen_undef_bit) {
+			SigSpec ret = {RTLIL::Sx};
+			ret.extend_u0(y_width);
+			return ret;
+		}
 		int result = ThreeValued::XOR(carry, ThreeValued::XNOR(al, bl));
-		if (result < 0)
+		if (result < 0) {
 			return SigSpec(RTLIL::S0, y_width);
+		}
 		if (result > 0) {
 			SigSpec ret = {RTLIL::S1};
 			ret.extend_u0(y_width);
