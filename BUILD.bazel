@@ -2,7 +2,6 @@
 """
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_license//rules:license.bzl", "license")
 load(
     "//:dependency_support/slang_ext.bzl",
@@ -44,21 +43,14 @@ expand_template(
 
 # --- sv-elab yosys plugin (shared library) ---
 
-cc_library(
-    name = "yosys_slang_plugin",
+# The plugin sources live here, but the rules that consume them live in
+# //src/yosys_plugin, so that the intermediate cc_library can be private to
+# that package. Only the loadable slang.so is a public target.
+filegroup(
+    name = "plugin_srcs",
     srcs = glob([
         "src/*.cc",
         "src/*.h",
     ]) + [":version.h"],
-    copts = [
-        "-fPIC",
-        "-std=c++20",
-        "-Wno-unused-parameter",
-    ],
     visibility = ["//src/yosys_plugin:__pkg__"],
-    deps = [
-        "@vendored-slang//:slang",
-        "@yosys//:hdrs",
-    ],
-    alwayslink = True,
 )

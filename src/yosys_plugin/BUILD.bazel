@@ -1,8 +1,39 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_shared_library.bzl", "cc_shared_library")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    features = ["layering_check"],
+)
+
+# Private on purpose: this is a static archive, which yosys cannot dlopen().
+# Depend on (or build) :slang.so instead.
+cc_library(
+    name = "yosys_plugin_lib",
+    srcs = ["//:plugin_srcs"],
+    copts = [
+        "-fPIC",
+        "-std=c++20",
+        "-Wno-unused-parameter",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@vendored-slang//:slang",
+        "@yosys//:hdrs",
+    ],
+    alwayslink = True,
+)
 
 cc_shared_library(
     name = "slang.so",
     shared_lib_name = "slang.so",
+    # Yosys symbols are left undefined here and resolved from the yosys
+    # binary at dlopen() time. ld64 rejects that unless asked explicitly;
+    # GNU ld permits it by default.
+    user_link_flags = select({
+        "@platforms//os:macos": ["-Wl,-undefined,dynamic_lookup"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
-    deps = ["//:yosys_slang_plugin"],
+    deps = [":yosys_plugin_lib"],
 )

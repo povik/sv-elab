@@ -1,0 +1,7 @@
+# Pick up the build:linux / build:macos / build:windows sections below
+# according to the host OS.
+build --enable_platform_specific_config
+
+# slang uses std::filesystem, which Apple's libc++ marks unavailable before
+# macOS 10.15. Without this the build fails with "'path' is unavailable".
+build:macos --macos_minimum_os=10.15
