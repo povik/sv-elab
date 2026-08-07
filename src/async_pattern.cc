@@ -199,26 +199,73 @@ void TimingPatternInterpretor::interpret_async_pattern(const ast::ProceduralBloc
 				did_something = true;
 			}
 
+			// Strip an (in)equality comparison against a constant, i.e. rewrite
+			// `x == C` / `x != C` into `x` or `!x` when that is sound. The
+			// signal operand may have been widened for the comparison (e.g. in
+			// `rst == 1` the comparison is performed at 32 bits per §11.6.1),
+			// so look through widening conversions on the signal side and
+			// extend 1'b0 / 1'b1 the same way those conversions would: the
+			// comparison reduces to `x` (or `!x`) iff C is the image of
+			// exactly one of the two values.
 			if (condition->kind == ast::ExpressionKind::BinaryOp &&
-					condition->as<ast::BinaryExpression>().op == ast::BinaryOperator::Equality &&
-					condition->as<ast::BinaryExpression>().right().getConstant() &&
-					condition->as<ast::BinaryExpression>().right().type->getBitWidth() == 1 &&
-					!condition->as<ast::BinaryExpression>().right().getConstant()->hasUnknown() &&
-					condition->as<ast::BinaryExpression>().right().getConstant()->isTrue()) {
+					(condition->as<ast::BinaryExpression>().op ==
+									ast::BinaryOperator::Equality ||
+							condition->as<ast::BinaryExpression>().op ==
+									ast::BinaryOperator::Inequality)) {
 				auto &biop = condition->as<ast::BinaryExpression>();
-				did_something = true;
-				condition = &biop.left();
-			}
 
-			if (condition->kind == ast::ExpressionKind::BinaryOp &&
-					condition->as<ast::BinaryExpression>().op == ast::BinaryOperator::Equality &&
-					condition->as<ast::BinaryExpression>().right().getConstant() &&
-					!condition->as<ast::BinaryExpression>().right().getConstant()->hasUnknown() &&
-					condition->as<ast::BinaryExpression>().right().getConstant()->isFalse()) {
-				auto &biop = condition->as<ast::BinaryExpression>();
-				polarity = !polarity;
-				did_something = true;
-				condition = &biop.left();
+				const ast::Expression *operand = nullptr;
+				const slang::ConstantValue *constant;
+				if ((constant = biop.right().getConstant()) && !biop.left().getConstant())
+					operand = &biop.left();
+				else if ((constant = biop.left().getConstant()) && !biop.right().getConstant())
+					operand = &biop.right();
+
+				if (operand && constant->isInteger() && !constant->integer().hasUnknown()) {
+					// Find the underlying expression below any widening
+					// integral conversions
+					std::vector<const ast::ConversionExpression *> conversions;
+					const ast::Expression *inner = operand;
+					while (inner->kind == ast::ExpressionKind::Conversion &&
+							inner->type->isIntegral() &&
+							inner->as<ast::ConversionExpression>().operand().type->isIntegral() &&
+							inner->as<ast::ConversionExpression>().operand().type->getBitWidth() <=
+									inner->type->getBitWidth()) {
+						conversions.push_back(&inner->as<ast::ConversionExpression>());
+						inner = &inner->as<ast::ConversionExpression>().operand();
+					}
+
+					if (inner->type->isIntegral() && inner->type->getBitWidth() == 1 &&
+							operand->type->getBitWidth() ==
+									constant->integer().getBitWidth()) {
+						// The images of 1'b0 / 1'b1 under the stripped
+						// conversions (zero or sign extension per the source
+						// type of each conversion step; zero's image is zero
+						// either way)
+						slang::SVInt image_one(1, 1, inner->type->isSigned());
+						for (auto it = conversions.rbegin(); it != conversions.rend(); it++) {
+							image_one = image_one.extend(
+									(*it)->type->getBitWidth(), image_one.isSigned());
+							image_one.setSigned((*it)->type->isSigned());
+						}
+						slang::SVInt image_zero(operand->type->getBitWidth(), 0, false);
+
+						bool matches_one = exactlyEqual(constant->integer(), image_one);
+						bool matches_zero = exactlyEqual(constant->integer(), image_zero);
+
+						// If C is the image of exactly one of the two values,
+						// the comparison reduces to the underlying expression
+						// up to polarity; otherwise the comparison is constant
+						// and there is nothing to match against the event list
+						if (matches_one != matches_zero) {
+							if (matches_zero !=
+									(biop.op == ast::BinaryOperator::Inequality))
+								polarity = !polarity;
+							condition = inner;
+							did_something = true;
+						}
+					}
+				}
 			}
 
 			if (condition->kind == ast::ExpressionKind::Conversion &&

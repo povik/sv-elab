@@ -1,0 +1,111 @@
+# Async-load condition spelled as a comparison against a constant: all of
+# `rst == 1` / `rst == 1'b1` / `rst != 0` / `1 == rst` (and the negated
+# spellings on negedge) must be matched against the event list just like the
+# bare `rst` condition. The comparison may be performed at a widened width
+# (e.g. `rst == 1` compares at 32 bits), which used to defeat the matcher.
+
+read_slang <<EOF
+module aload_eq_unsized(input logic clk, rst, d, output logic q);
+    always_ff @(posedge clk or posedge rst)
+        if (rst == 1) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=1 %i
+select -assert-count 1 t:$aldff %ci:+[ALOAD] w:rst %d
+
+design -reset
+read_slang <<EOF
+module aload_eq_sized(input logic clk, rst, d, output logic q);
+    always_ff @(posedge clk or posedge rst)
+        if (rst == 1'b1) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=1 %i
+select -assert-count 1 t:$aldff %ci:+[ALOAD] w:rst %d
+
+design -reset
+read_slang <<EOF
+module aload_neq_zero(input logic clk, rst, d, output logic q);
+    always_ff @(posedge clk or posedge rst)
+        if (rst != 0) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=1 %i
+select -assert-count 1 t:$aldff %ci:+[ALOAD] w:rst %d
+
+design -reset
+read_slang <<EOF
+module aload_eq_swapped(input logic clk, rst, d, output logic q);
+    always_ff @(posedge clk or posedge rst)
+        if (1 == rst) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=1 %i
+select -assert-count 1 t:$aldff %ci:+[ALOAD] w:rst %d
+
+design -reset
+read_slang <<EOF
+module aload_eq_parens(input logic clk, rst, d, output logic q);
+    always_ff @(posedge clk or posedge rst)
+        if (((rst == 1))) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=1 %i
+
+design -reset
+read_slang <<EOF
+module aload_negedge_eq_zero(input logic clk, rst_n, d, output logic q);
+    always_ff @(posedge clk or negedge rst_n)
+        if (rst_n == 0) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=0 %i
+select -assert-count 1 t:$aldff %ci:+[ALOAD] w:rst_n %d
+
+design -reset
+read_slang <<EOF
+module aload_negedge_neq_one(input logic clk, rst_n, d, output logic q);
+    always_ff @(posedge clk or negedge rst_n)
+        if (rst_n != 1) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+select -assert-count 1 t:$aldff
+select -assert-count 1 t:$aldff r:ALOAD_POLARITY=0 %i
+select -assert-count 1 t:$aldff %ci:+[ALOAD] w:rst_n %d
+
+# A comparison against a constant that is the image of NEITHER 1'b0 nor 1'b1
+# is a constant condition and must still be rejected, not silently matched.
+design -reset
+test_slangdiag -expect "condition cannot be matched to any signal from the event list"
+read_slang <<EOF
+module aload_eq_two(input logic clk, rst, d, output logic q);
+    always_ff @(posedge clk or posedge rst)
+        if (rst == 2) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
+
+# For a SIGNED 1-bit signal, `s == 1` sign-extends `s` for the comparison, so
+# it is constant-false and must not be treated as the async-load condition.
+design -reset
+test_slangdiag -expect "condition cannot be matched to any signal from the event list"
+read_slang <<EOF
+module aload_eq_one_signed(input logic clk, d, output logic q, input logic signed s);
+    always_ff @(posedge clk or posedge s)
+        if (s == 1) q <= 1'b0;
+        else q <= d;
+endmodule
+EOF
