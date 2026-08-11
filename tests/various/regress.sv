@@ -342,3 +342,10 @@ module r28(input clk, input rst, input x, output q);
             bar.q <= bar.x;
     end
 endmodule
+
+// pr 373 async pattern with size cast
+module r29(input clk, input rst, input d, output reg q);
+	always @(posedge clk or posedge rst)
+		if (rst == 1) q <= 1'b0;
+		else q <= d;
+endmodule

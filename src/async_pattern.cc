@@ -20,6 +20,7 @@
 #include "slang/ast/symbols/BlockSymbols.h"
 #include "slang/ast/types/Type.h"
 #include <cstddef>
+#include <optional>
 
 #include "async_pattern.h"
 #include "diag.h"
@@ -124,6 +125,111 @@ void TimingPatternInterpretor::handle_always(const ast::ProceduralBlockSymbol &s
 	}
 }
 
+namespace {
+
+struct AloadConditionValue
+{
+	VariableBit signal;
+	bool polarity;
+
+	explicit AloadConditionValue(VariableBit signal, bool polarity = true)
+		: signal(signal), polarity(polarity)
+	{}
+
+	AloadConditionValue operator!() const { return AloadConditionValue(signal, !polarity); }
+};
+
+} // namespace
+
+static std::optional<AloadConditionValue> interpret_aload_condition(
+		EvalContext &eval, const ast::Expression &expr)
+{
+	switch (expr.kind) {
+	case ast::ExpressionKind::BinaryOp: {
+		auto &biop = expr.as<ast::BinaryExpression>();
+		auto const_ = biop.right().eval(eval.const_);
+
+		if (biop.op == ast::BinaryOperator::Equality && const_.isInteger() &&
+				!const_.hasUnknown()) {
+
+			const slang::SVInt &int_const = const_.integer();
+
+			// SVInt's == zero-extends both sides to the wider operand
+			if (int_const == slang::SVInt::One) {
+				// comparison target is constant one with optional zero extension,
+				// pass through the left operand as is
+				return interpret_aload_condition(eval, biop.left());
+			}
+
+			if (int_const == slang::SVInt::Zero) {
+				// comparison target is fully zeroed,
+				// pass through the left operand after negation
+				auto left_interpreted = interpret_aload_condition(eval, biop.left());
+				if (left_interpreted) {
+					return !*left_interpreted;
+				}
+			}
+		}
+
+		// Inequality follows Equality handling with polarities swapped
+		if (biop.op == ast::BinaryOperator::Inequality && const_.isInteger() &&
+				!const_.hasUnknown()) {
+			const slang::SVInt &int_const = const_.integer();
+
+			// SVInt's == zero-extends both sides to the wider operand
+			if (int_const == slang::SVInt::One) {
+				auto left_interpreted = interpret_aload_condition(eval, biop.left());
+				if (left_interpreted) {
+					return !*left_interpreted;
+				}
+			}
+
+			if (int_const == slang::SVInt::Zero) {
+				return interpret_aload_condition(eval, biop.left());
+			}
+		}
+
+		break;
+	}
+
+	case ast::ExpressionKind::UnaryOp: {
+		auto &unop = expr.as<ast::UnaryExpression>();
+		if (unop.op == ast::UnaryOperator::LogicalNot ||
+				(unop.op == ast::UnaryOperator::BitwiseNot && unop.type->getBitWidth() == 1)) {
+			auto op_interpreted = interpret_aload_condition(eval, unop.operand());
+			if (op_interpreted) {
+				return !*op_interpreted;
+			}
+		}
+
+		break;
+	}
+
+	case ast::ExpressionKind::Conversion: {
+		auto &conv = expr.as<ast::ConversionExpression>();
+		if (conv.operand().type->isIntegral() && conv.type->isIntegral() &&
+				!conv.operand().type->isSigned() && !conv.type->isSigned() &&
+				/* maybe redundant: */ conv.type->getBitWidth() >= 1) {
+			// conditions met for safe pass-through
+			return interpret_aload_condition(eval, conv.operand());
+		}
+
+		break;
+	}
+
+	default: break;
+	}
+
+	// If none of the above cases matched, use the "lhs" evaluator
+	// to describe the expression in terms of variable bits
+	VariableBits expr_vbits = eval.lhs(expr, /* silent= */ true);
+	if (expr_vbits.bitwidth() == 1 && !expr_vbits.has_dummy_bits()) {
+		return AloadConditionValue(expr_vbits[0]);
+	}
+
+	return std::nullopt;
+}
+
 void TimingPatternInterpretor::interpret_async_pattern(const ast::ProceduralBlockSymbol &symbol,
 		std::vector<const ast::SignalEventControl *> triggers, const ast::Statement &body)
 {
@@ -184,58 +290,14 @@ void TimingPatternInterpretor::interpret_async_pattern(const ast::ProceduralBloc
 		}
 
 		auto &cond_stmt = stmt->as<ast::ConditionalStatement>();
-		const ast::Expression *condition = cond_stmt.conditions[0].expr;
+		std::optional<AloadConditionValue> condition =
+				interpret_aload_condition(eval, *cond_stmt.conditions[0].expr);
 
-		bool did_something = true, polarity = true;
-		while (did_something) {
-			did_something = false;
-
-			if (condition->kind == ast::ExpressionKind::UnaryOp &&
-					(condition->as<ast::UnaryExpression>().op == ast::UnaryOperator::LogicalNot ||
-							condition->as<ast::UnaryExpression>().op ==
-									ast::UnaryOperator::BitwiseNot)) {
-				polarity = !polarity;
-				condition = &condition->as<ast::UnaryExpression>().operand();
-				did_something = true;
-			}
-
-			if (condition->kind == ast::ExpressionKind::BinaryOp &&
-					condition->as<ast::BinaryExpression>().op == ast::BinaryOperator::Equality &&
-					condition->as<ast::BinaryExpression>().right().getConstant() &&
-					condition->as<ast::BinaryExpression>().right().type->getBitWidth() == 1 &&
-					!condition->as<ast::BinaryExpression>().right().getConstant()->hasUnknown() &&
-					condition->as<ast::BinaryExpression>().right().getConstant()->isTrue()) {
-				auto &biop = condition->as<ast::BinaryExpression>();
-				did_something = true;
-				condition = &biop.left();
-			}
-
-			if (condition->kind == ast::ExpressionKind::BinaryOp &&
-					condition->as<ast::BinaryExpression>().op == ast::BinaryOperator::Equality &&
-					condition->as<ast::BinaryExpression>().right().getConstant() &&
-					!condition->as<ast::BinaryExpression>().right().getConstant()->hasUnknown() &&
-					condition->as<ast::BinaryExpression>().right().getConstant()->isFalse()) {
-				auto &biop = condition->as<ast::BinaryExpression>();
-				polarity = !polarity;
-				did_something = true;
-				condition = &biop.left();
-			}
-
-			if (condition->kind == ast::ExpressionKind::Conversion &&
-					condition->as<ast::ConversionExpression>().operand().type->isIntegral() &&
-					condition->as<ast::ConversionExpression>().operand().type->getBitWidth() <
-							condition->type->getBitWidth()) {
-				did_something = true;
-				condition = &condition->as<ast::ConversionExpression>().operand();
-			}
-		}
-
-		VariableBits condition1 = eval.lhs(*condition, /* silent= */ true);
-
-		if (condition1.bitwidth() == 1 && !condition1.has_dummy_bits()) {
+		if ((bool)condition) {
 			auto found = std::find_if(
 					triggers.begin(), triggers.end(), [&](const ast::SignalEventControl *trigger) {
-						return eval.lhs(trigger->expr, /* silent= */ true) == condition1;
+						return eval.lhs(trigger->expr, /* silent= */ true) ==
+							   VariableBits(condition->signal);
 					});
 
 			if (found != triggers.end()) {
@@ -243,7 +305,7 @@ void TimingPatternInterpretor::interpret_async_pattern(const ast::ProceduralBloc
 					issuer.add_diag(diag::IffUnsupported, (*found)->iffCondition->sourceRange);
 
 				if ((*found)->edge !=
-						(polarity ? ast::EdgeKind::PosEdge : ast::EdgeKind::NegEdge)) {
+						(condition->polarity ? ast::EdgeKind::PosEdge : ast::EdgeKind::NegEdge)) {
 					auto &diag = issuer.add_diag(
 							diag::IfElseAloadPolarity, cond_stmt.conditions[0].expr->sourceRange);
 					diag.addNote(diag::NoteSignalEvent, (*found)->sourceRange);
@@ -251,7 +313,7 @@ void TimingPatternInterpretor::interpret_async_pattern(const ast::ProceduralBloc
 					// We raised an error. Do infer the async load anyway
 				}
 
-				found_async.push_back({condition1[0], polarity, cond_stmt.ifTrue});
+				found_async.push_back({condition->signal, condition->polarity, cond_stmt.ifTrue});
 				triggers.erase(found);
 				stmt = cond_stmt.ifFalse;
 				continue;

@@ -343,3 +343,54 @@ module async05_gate(CLK, SET, CLR, D, Q);
   end  
 endmodule
 EOF
+
+# should not infer because rst is signed
+design -reset
+test_slangdiag -expect "condition cannot be matched to any signal from the event list"
+read_slang <<EOF
+module async06_gate(input logic clk, input logic signed rst,
+          input logic [3:0] d, output logic [3:0] q);
+  always_ff @(posedge clk, posedge rst)
+    if (rst == 1)
+      q <= 4'h0;
+    else
+      q <= d;
+endmodule
+EOF
+
+design -reset
+read_slang <<EOF
+module async07_gate(input logic clk, input bit rst,
+          input logic [3:0] d, output logic [3:0] q);
+  always_ff @(posedge clk, posedge rst)
+    if (rst == 1'b1)
+      q <= 4'h0;
+    else
+      q <= d;
+endmodule
+EOF
+
+read_rtlil <<EOF
+module \async07_gold
+  wire input 1 \clk
+  wire input 2 \rst
+  wire width 4 input 3 \d
+  wire width 4 output 4 \q
+
+  cell $adff $1
+    parameter \ARST_POLARITY 1'1
+    parameter \ARST_VALUE 4'0000
+    parameter \CLK_POLARITY 1'1
+    parameter \WIDTH 4
+    connect \ARST \rst
+    connect \CLK \clk
+    connect \D \d
+    connect \Q \q
+  end
+end
+EOF
+
+async2sync
+equiv_make async07_gold async07_gate async07_equiv
+equiv_induct async07_equiv
+equiv_status -assert
