@@ -1,0 +1,68 @@
+design -reset
+read_verilog -lib <<EOF
+
+module CC_PLL #(
+	parameter REF_CLK = "",
+	parameter OUT_CLK = "",
+	parameter PERF_MD = "ECONOMY",
+	parameter LOCK_REQ = 1,
+	parameter CLK270_DOUB = 0,
+	parameter CLK180_DOUB = 0,
+	parameter LOW_JITTER = 1,
+	parameter CI_FILTER_CONST = 2,
+	parameter CP_FILTER_CONST = 4
+)(
+	input  CLK_REF, CLK_FEEDBACK, USR_CLK_REF,
+	input  USR_LOCKED_STDY_RST,
+	output USR_PLL_LOCKED_STDY, USR_PLL_LOCKED,
+	output CLK270, CLK180, CLK90, CLK0, CLK_REF_OUT
+);
+endmodule
+
+module CC_BUFG (
+	input  I,
+	output O
+);
+	assign O = I;
+
+endmodule
+EOF
+
+read_slang  <<EOF
+module pll (
+    input  wire clock_in,
+    input  wire rst_in,
+    output wire clock_out,
+    output reg  locked
+);
+
+wire clk270, clk180, clk90, clk0, usr_ref_out;
+wire usr_pll_lock;
+
+wire pll_clk_nobuf;
+CC_PLL #(
+    .REF_CLK("24.0"),
+    .OUT_CLK("25.0"),
+    .PERF_MD("SPEED"),
+    .LOCK_REQ(0)
+) pll25 (
+    .CLK_REF(clock_in), .CLK_FEEDBACK(1'b0), .USR_CLK_REF(1'b0),
+    .USR_LOCKED_STDY_RST(1'b0), .USR_PLL_LOCKED_STDY(),
+    .USR_PLL_LOCKED(usr_pll_lock),
+    .CLK270(clk270), .CLK180(clk180), .CLK90(clk90), .CLK0(pll_clk_nobuf), .CLK_REF_OUT(usr_ref_out)
+);
+CC_BUFG pll_bufg (.I(pll_clk_nobuf), .O(clock_out));
+
+reg locked_s1;
+always @(posedge clock_out) begin
+    locked_s1 <= usr_pll_lock & ~rst_in;
+    locked <= locked_s1;
+end
+
+endmodule
+EOF
+
+select -assert-count 1 c:pll25 r:REF_CLK=24.0 %i
+select -assert-count 1 c:pll25 r:OUT_CLK=25.0 %i
+select -assert-count 1 c:pll25 r:PERF_MD=SPEED %i
+select -assert-count 1 c:pll25 r:LOCK_REQ=0 %i
