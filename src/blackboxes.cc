@@ -204,20 +204,30 @@ void export_blackbox_to_rtlil(
 
 	inst.body.visit(ast::makeVisitor(
 			[&](auto &, const ast::PortSymbol &port) {
+				if (port.getType().isFloating()) {
+					netlist.add_diag(diag::UnsupportedBitConversion, port.location)
+							<< port.getType().toString();
+					return;
+				}
 				if (!port.getSyntax() || !port.getType().isFixedSize() || !port.internalSymbol ||
 						!port.internalSymbol->getDeclaredType()) {
 					inst.body.addDiag(diag::BboxExportPortWidths, port.location);
 				} else {
 					const DeclaredType *dt = port.internalSymbol->getDeclaredType();
-					const SyntaxNode &syntax = *dt->getTypeSyntax();
+					const SyntaxNode *syntax = dt->getTypeSyntax();
 					const SyntaxList<VariableDimensionSyntax> *dims = nullptr;
 					bool rejected = false;
 
-					if (syntax.kind == SyntaxKind::ImplicitType) {
-						auto &impl_type = syntax.as<ImplicitTypeSyntax>();
+					if (!syntax) {
+						// The declared type links to another declaration (e.g. a
+						// user-defined nettype), so there is no inline type syntax
+						// here and thus no packed dimensions on this port to check.
+						// The unpacked dimensions, if any, are still validated below.
+					} else if (syntax->kind == SyntaxKind::ImplicitType) {
+						auto &impl_type = syntax->as<ImplicitTypeSyntax>();
 						dims = &impl_type.dimensions;
-					} else if (IntegerTypeSyntax::isKind(syntax.kind)) {
-						auto &int_type = syntax.as<IntegerTypeSyntax>();
+					} else if (IntegerTypeSyntax::isKind(syntax->kind)) {
+						auto &int_type = syntax->as<IntegerTypeSyntax>();
 						dims = &int_type.dimensions;
 					} else {
 						inst.body.addDiag(diag::BboxExportPortWidths, port.location);
