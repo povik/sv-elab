@@ -152,10 +152,10 @@ struct Case
 						prepended_switches.push_back(sw);
 						Case *case_ = sw->add_case({ir::S1});
 						case_->statement = statement;
-						case_->aux_actions.push_back(RTLIL::SigSig(RTLIL::SigSpec(mapped.second),
-								ir::Value(action.unmasked_rvalue[i])));
-						case_->aux_actions.push_back(RTLIL::SigSig(
-								RTLIL::SigSpec(mapped.first), RTLIL::SigSpec(RTLIL::S1)));
+						case_->aux_actions.push_back({RTLIL::SigSpec(mapped.second),
+								ir::Value(action.unmasked_rvalue[i])});
+						case_->aux_actions.push_back(
+								{RTLIL::SigSpec(mapped.first), RTLIL::SigSpec(RTLIL::S1)});
 						has_mask_switches.insert(lbit);
 					}
 				}
