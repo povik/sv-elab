@@ -67,7 +67,7 @@ struct Case
 	std::vector<ValuePattern> compare;
 	std::vector<Action> actions;
 	std::vector<Switch *> switches;
-	std::vector<RTLIL::SigSig> aux_actions;
+	std::vector<SyncAction> aux_actions;
 
 	~Case()
 	{
