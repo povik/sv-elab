@@ -113,6 +113,8 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 }
 #endif
 
+using SyncAction = decltype(RTLIL::CaseRule::actions)::value_type;
+
 #else // SLANG_NO_YOSYS
 
 // Used for failed internal invariants
