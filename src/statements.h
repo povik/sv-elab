@@ -508,7 +508,7 @@ struct SwitchHelper
 
 			ir::Value w_default = vstate.evaluate(netlist, chunk);
 			ir::Value w = netlist.add_placeholder_signal(chunk.bitwidth(), name_suggestion);
-			parent->aux_actions.push_back(RTLIL::SigSig(w, w_default));
+			parent->aux_actions.push_back({w, w_default});
 			vstate.set(chunk, w);
 		}
 
@@ -533,7 +533,7 @@ struct SwitchHelper
 				}
 
 				rule->aux_actions.push_back(
-						RTLIL::SigSig(target_w, source.extract(done, (int)chunk.bitwidth())));
+						{target_w, source.extract(done, (int)chunk.bitwidth())});
 				done += (int)chunk.bitwidth();
 			}
 		}
