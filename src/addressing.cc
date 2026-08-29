@@ -11,16 +11,44 @@
 #include "slang/ast/types/Type.h"
 #include <cstdint>
 
-// Fix for Yosys declaring ceil_log2 as both inline and non-inline
-// but not defining the non-inline one; be sure to include utils.h
-// with the inline definition to prevent linkage errors on some
-// platforms
-#include "kernel/utils.h"
-
 #include "slang_frontend.h"
 #include "variables.h"
 
 namespace slang_frontend {
+
+static inline int ceil_log2(uint64_t x)
+{
+	if (x <= 1) {
+		return 0;
+	}
+
+#if defined(__GNUC__) || defined(__clang__)
+	return sizeof(unsigned long long) * 8 - __builtin_clzll(x - 1);
+#else
+	uint64_t masks[6] = {
+			0x0000000000000002ull,
+			0x000000000000000cull,
+			0x00000000000000f0ull,
+			0x000000000000ff00ull,
+			0x00000000ffff0000ull,
+			0xffffffff00000000ull,
+	};
+
+	unsigned int log_x = 0;
+	x -= 1;
+
+	for (int i = 5; i >= 0; i--) {
+		log_x <<= 1;
+		uint64_t mask = masks[i];
+		if (x & mask) {
+			x >>= (1 << i);
+			log_x |= 1;
+		}
+	}
+
+	return log_x + 1;
+#endif
+}
 
 void AddressingResolver::interpret_index(ir::Value signal, int64_t width_down, int64_t width_up)
 {

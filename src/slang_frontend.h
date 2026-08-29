@@ -76,7 +76,6 @@ using Yosys::log_warning;
 using Yosys::log_id;
 using Yosys::log_signal;
 using Yosys::ys_debug;
-using Yosys::ceil_log2;
 #ifndef log_debug
 using Yosys::log_debug;
 #endif
