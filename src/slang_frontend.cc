@@ -292,7 +292,7 @@ const std::optional<ir::Const> NetlistContext::convert_const(const slang::Consta
 namespace slang_frontend {
 
 #ifndef SLANG_MUX_LOWERING
-static Yosys::pool<VariableBit> detect_possibly_unassigned_subset(Yosys::pool<VariableBit> &signals, Case *rule, int level=0)
+[[maybe_unused]] static Yosys::pool<VariableBit> detect_possibly_unassigned_subset(Yosys::pool<VariableBit> &signals, Case *rule, int level=0)
 {
 	Yosys::pool<VariableBit> remaining = signals;
 	bool debug = false;
@@ -1681,7 +1681,7 @@ public:
 		  queue(queue), netlist(netlist), settings(netlist.settings),
 		  mem_detect(netlist, settings, std::bind(&NetlistContext::should_dissolve, &netlist, std::placeholders::_1, nullptr), netlist.eval) {}
 
-	void handle_comb_like_process(const ast::ProceduralBlockSymbol &symbol, const ast::Statement &body)
+	void handle_comb_like_process([[maybe_unused]] const ast::ProceduralBlockSymbol &symbol, const ast::Statement &body)
 	{
 #ifndef SLANG_MUX_LOWERING
 		RTLIL::Process *proc = netlist.backend->canvas->addProcess(netlist.backend->new_id());

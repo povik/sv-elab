@@ -62,8 +62,8 @@ struct SwitchHelper
 	// processed branches
 	ir::Net masked_enabled;
 
-	SwitchHelper(
-			ProceduralContext &context, ir::Value signal, const ast::Statement *statement = nullptr)
+	SwitchHelper(ProceduralContext &context, ir::Value signal,
+			[[maybe_unused]] const ast::Statement *statement = nullptr)
 		: context(context), vstate(context.vstate), dispatch(signal),
 		  original_enabled(context.enabled), masked_enabled(context.enabled)
 	{}
@@ -99,8 +99,8 @@ struct SwitchHelper
 		return cond;
 	}
 
-	void enter_branch(
-			std::vector<ValuePattern> compare, const ast::Statement *case_statement = nullptr)
+	void enter_branch(std::vector<ValuePattern> compare,
+			[[maybe_unused]] const ast::Statement *case_statement = nullptr)
 	{
 		auto &netlist = context.netlist;
 		save_snap = {};
@@ -199,7 +199,8 @@ struct SwitchHelper
 		return true;
 	}
 
-	void finish(NetlistContext &netlist, bool full_case = false, bool parallel_case = false)
+	void finish(NetlistContext &netlist, bool full_case = false,
+			[[maybe_unused]] bool parallel_case = false)
 	{
 		if (!full_case)
 			full_case = detect_full_case();
@@ -299,8 +300,8 @@ struct SwitchHelper
 		other.finished = false;
 	}
 
-	void enter_branch(
-			std::vector<ValuePattern> compare, const ast::Statement *case_statement = nullptr)
+	void enter_branch(std::vector<ValuePattern> compare,
+			[[maybe_unused]] const ast::Statement *case_statement = nullptr)
 	{
 		save_snap = {};
 		vstate.save(save_snap);
