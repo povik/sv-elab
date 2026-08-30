@@ -77,10 +77,78 @@ static const RTLIL::IdString rtlil_id(const std::string_view &view)
 	return RTLIL::escape_id(std::string(view));
 }
 
+static RTLIL::Const convert_svint_rtlil(const slang::SVInt &svint)
+{
+	std::vector<RTLIL::State> bits;
+	bits.reserve(svint.getBitWidth());
+	for (int i = 0; i < (int)svint.getBitWidth(); i++)
+		switch (svint[i].value) {
+		case 0:                       bits.push_back(RTLIL::State::S0); break;
+		case 1:                       bits.push_back(RTLIL::State::S1); break;
+		case slang::logic_t::X_VALUE: bits.push_back(RTLIL::State::Sx); break;
+		case slang::logic_t::Z_VALUE: bits.push_back(RTLIL::State::Sz); break;
+		}
+	return bits;
+}
+
+const std::optional<RTLIL::Const> convert_const_rtlil(
+		NetlistContext &netlist, const slang::ConstantValue &constval, slang::SourceLocation loc)
+{
+	if (constval.bad()) {
+		// no diagnostic in this case as we assume one has been raised upstream
+		return {};
+	} else if (constval.isReal()) {
+		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "real"sv;
+		return {};
+	} else if (constval.isShortReal()) {
+		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "shortreal"sv;
+		return {};
+	} else if (constval.isUnbounded()) {
+		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "unbounded symbol"sv;
+		return {};
+	} else if (constval.isMap()) {
+		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "map"sv;
+		return {};
+	} else if (constval.isQueue()) {
+		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "queue"sv;
+		return {};
+	} else if (constval.isUnion()) {
+		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "union"sv;
+		return {};
+	}
+
+	if (constval.isInteger()) {
+		return convert_svint_rtlil(constval.integer());
+	} else if (constval.isUnpacked()) {
+		std::vector<RTLIL::State> bits;
+		bits.reserve(constval.getBitstreamWidth());
+
+		auto elems = constval.elements();
+		for (auto it = elems.rbegin(); it != elems.rend(); it++) {
+			if (auto piece = convert_const_rtlil(netlist, *it, loc)) {
+				bits.insert(bits.end(), piece->begin(), piece->end());
+			} else {
+				return {};
+			}
+		}
+
+		log_assert(bits.size() == constval.getBitstreamWidth());
+		return bits;
+	} else if (constval.isString()) {
+		RTLIL::Const ret = convert_svint_rtlil(constval.convertToInt().integer());
+		ret.flags |= RTLIL::CONST_FLAG_STRING;
+		return ret;
+	} else if (constval.isNullHandle()) {
+		return {};
+	}
+
+	log_abort();
+}
+
 std::optional<RTLIL::Const> convert_attr_value(
 		NetlistContext &netlist, const ast::AttributeSymbol *symbol)
 {
-	auto value = netlist.convert_const(symbol->getValue(), symbol->location);
+	auto value = convert_const_rtlil(netlist, symbol->getValue(), symbol->location);
 	if (value) {
 		// slang converts string literals to integer constants per the spec;
 		// we need to look at the syntax tree to recover the information

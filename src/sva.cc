@@ -47,7 +47,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 	if (ast::DisableIffAssertionExpr::isKind(expr->kind)) {
 		auto &disable = expr->as<ast::DisableIffAssertionExpr>();
 		switch_.emplace(procedural, netlist.ReduceBool(procedural.eval.sva(disable.condition)));
-		switch_->enter_branch({RTLIL::S0});
+		switch_->enter_branch({ir::S0});
 		expr = &disable.expr;
 		source_range = expr->syntax ? expr->syntax->sourceRange() : statement.sourceRange;
 	}
@@ -82,7 +82,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 		cell_name = netlist.new_id();
 	}
 
-	RTLIL::SigSpec a = netlist.ReduceBool(procedural.eval.sva(simple_assertion.expr));
+	ir::Net a = netlist.ReduceBool(procedural.eval.sva(simple_assertion.expr));
 
 	auto cell = netlist.canvas->addCell(cell_name, ID($check));
 	procedural.set_effects_trigger(cell);
@@ -91,7 +91,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 	cell->setParam(ID::ARGS_WIDTH, 0);
 	cell->setParam(ID::PRIORITY, --procedural.effects_priority);
 	cell->setPort(ID::ARGS, {});
-	cell->setPort(ID::A, a);
+	cell->setPort(ID::A, {a});
 	transfer_attrs(netlist, statement, cell);
 }
 
@@ -122,7 +122,7 @@ void process_freestanding_sva_property(NetlistContext &netlist,
 		case ast::EdgeKind::PosEdge:
 		case ast::EdgeKind::NegEdge:
 			timing.triggers.push_back(ProcessTiming::Sensitivity {
-				.signal = netlist.eval(signal_event.expr),
+				.signal = netlist.eval(signal_event.expr).as_net(),
 				.edge_polarity = (signal_event.edge == ast::EdgeKind::PosEdge),
 				.ast_node = &clocking
 			});

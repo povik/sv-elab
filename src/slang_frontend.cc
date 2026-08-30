@@ -75,6 +75,7 @@
 #include "kernel/sigtools.h"
 #include "kernel/utils.h"
 
+#include "cases.h"
 #include "statements.h"
 #include "version.h"
 #include "slang_frontend.h"
@@ -85,6 +86,29 @@
 using namespace std::string_literals;
 
 namespace slang_frontend {
+
+ValuePattern svint_to_pattern(
+		NetlistContext &netlist,
+		const slang::SVInt &svint, bool wildcard_x, bool wildcard_z,
+		slang::SourceLocation loc)
+{
+	ValuePattern pat;
+	pat.bits.reserve(svint.getBitWidth());
+	for (int i = 0; i < (int) svint.getBitWidth(); i++)
+	switch (svint[i].value) {
+	case 0: pat.bits.push_back(PatternBit(ir::S0)); break;
+	case 1: pat.bits.push_back(PatternBit(ir::S1)); break;
+	case slang::logic_t::X_VALUE:
+		pat.bits.push_back(wildcard_x ? PatternBit::wildcard() : PatternBit(ir::Sx));
+		break;
+	case slang::logic_t::Z_VALUE:
+		if (!wildcard_z)
+			netlist.add_diag(diag::HighImpedanceUnsupported, loc);
+		pat.bits.push_back(wildcard_z ? PatternBit::wildcard() : PatternBit(ir::Sx));
+		break;
+	}
+	return pat;
+}
 
 void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 	cmdLine.add("--dump-ast", dump_ast, "Dump the AST");
@@ -182,22 +206,26 @@ static const RTLIL::IdString module_type_id(const ast::InstanceBodySymbol &sym)
 		return RTLIL::escape_id(std::string(sym.name) + "$" + instance);
 }
 
-static const RTLIL::Const convert_svint(const slang::SVInt &svint)
+ir::Const NetlistContext::convert_svint(const slang::SVInt &svint,
+										slang::SourceLocation loc)
 {
-	std::vector<RTLIL::State> bits;
+	std::vector<ir::Trit> bits;
 	bits.reserve(svint.getBitWidth());
 	for (int i = 0; i < (int) svint.getBitWidth(); i++)
 	switch (svint[i].value) {
-	case 0: bits.push_back(RTLIL::State::S0); break;
-	case 1: bits.push_back(RTLIL::State::S1); break;
-	case slang::logic_t::X_VALUE: bits.push_back(RTLIL::State::Sx); break;
-	case slang::logic_t::Z_VALUE: bits.push_back(RTLIL::State::Sz); break;
+	case 0: bits.push_back(ir::S0); break;
+	case 1: bits.push_back(ir::S1); break;
+	case slang::logic_t::X_VALUE: bits.push_back(ir::Sx); break;
+	case slang::logic_t::Z_VALUE: {
+		add_diag(diag::HighImpedanceUnsupported, loc);
+		bits.push_back(ir::Sx); break;
+	}
 	}
 	return bits;
 }
 
-const std::optional<RTLIL::Const> NetlistContext::convert_const(const slang::ConstantValue &constval,
-																slang::SourceLocation loc)
+const std::optional<ir::Const> NetlistContext::convert_const(const slang::ConstantValue &constval,
+															 slang::SourceLocation loc)
 {
 	if (constval.bad()) {
 		// no diagnostic in this case as we assume one has been raised upstream
@@ -223,15 +251,15 @@ const std::optional<RTLIL::Const> NetlistContext::convert_const(const slang::Con
 	}
 
 	if (constval.isInteger()) {
-		return convert_svint(constval.integer());
+		return convert_svint(constval.integer(), loc);
 	} else if (constval.isUnpacked()) {
-		std::vector<RTLIL::State> bits;
+		std::vector<ir::Trit> bits;
 		bits.reserve(constval.getBitstreamWidth());
 
 		auto elems = constval.elements();
 		for (auto it = elems.rbegin(); it != elems.rend(); it++) {
 			if (auto piece = convert_const(*it, loc)) {
-				bits.insert(bits.end(), piece->begin(), piece->end());	
+				bits.insert(bits.end(), piece->begin(), piece->end());
 			} else {
 				return {};
 			}
@@ -240,8 +268,8 @@ const std::optional<RTLIL::Const> NetlistContext::convert_const(const slang::Con
 		log_assert(bits.size() == constval.getBitstreamWidth());
 		return bits;
 	} else if (constval.isString()) {
-		RTLIL::Const ret = convert_svint(constval.convertToInt().integer());
-		ret.flags |= RTLIL::CONST_FLAG_STRING;
+		ir::Const ret = convert_svint(constval.convertToInt().integer(), loc);
+		ret.raw_rtlil().flags |= RTLIL::CONST_FLAG_STRING;
 		return ret;
 	} else if (constval.isNullHandle()) {
 		return {};
@@ -289,8 +317,8 @@ static Yosys::pool<VariableBit> detect_possibly_unassigned_subset(Yosys::pool<Va
 
 			if (debug) {
 				log_debug("%s case ", std::string(level, ' ').c_str());
-				for (auto compare : case_->compare)
-					log_debug("%s ", log_signal(compare));
+				for (auto &compare : case_->compare)
+					log_debug("%s ", log_signal(lower_pattern(compare)));
 				log_debug("\n");
 			}
 
@@ -299,12 +327,12 @@ static Yosys::pool<VariableBit> detect_possibly_unassigned_subset(Yosys::pool<Va
 				// we have reached a default, by now we know this case is full
 				selectable = pool.take_all() || switch_->signal.empty();
 			} else {
-				for (auto compare : case_->compare) {
+				for (auto &compare : case_->compare) {
 					if (!compare.is_fully_const()) {
 						if (!pool.empty())
 							selectable = true;
 					} else {
-						if (pool.take(compare))
+						if (pool.take(lower_pattern(compare)))
 							selectable = true;
 					}
 				}
@@ -324,11 +352,11 @@ static Yosys::pool<VariableBit> detect_possibly_unassigned_subset(Yosys::pool<Va
 }
 
 // extract trigger for side-effect cells like $print, $check
-void ProcessTiming::extract_trigger(NetlistContext &netlist, Yosys::Cell *cell, RTLIL::SigBit enable)
+void ProcessTiming::extract_trigger(NetlistContext &netlist, Yosys::Cell *cell, ir::Net enable)
 {
 	auto &params = cell->parameters;
 
-	cell->setPort(ID::EN, netlist.LogicAnd(background_enable, enable));
+	cell->setPort(ID::EN, {netlist.LogicAnd(background_enable, enable)});
 
 	switch (kind) {
 	case Implicit: {
@@ -366,10 +394,11 @@ void ProcessTiming::extract_trigger(NetlistContext &netlist, Yosys::Cell *cell, 
 // For $check, $print cells
 void ProceduralContext::set_effects_trigger(RTLIL::Cell *cell)
 {
-	timing.extract_trigger(netlist, cell, case_enable());
+	ir::Net en = case_enable();
+	timing.extract_trigger(netlist, cell, en);
 }
 
-RTLIL::SigBit inside_comparison(EvalContext &eval, RTLIL::SigSpec left,
+ir::Value inside_comparison(EvalContext &eval, ir::Value left,
 								const ast::Expression &expr)
 {
 	require(expr, !expr.type->isUnpackedArray());
@@ -383,7 +412,7 @@ RTLIL::SigBit inside_comparison(EvalContext &eval, RTLIL::SigSpec left,
 			eval.netlist.Le(left, eval(vexpr.right()), vexpr.right().type->isSigned())
 		);
 	} else {
-		RTLIL::SigSpec expr_signal = eval(expr);
+		ir::Value expr_signal = eval(expr);
 		ast_invariant(expr, expr_signal.size() == left.size());
 
 		if (expr.type->isIntegral()) {
@@ -402,20 +431,8 @@ bool NetlistContext::is_inferred_memory(const ast::Symbol &symbol)
 
 bool NetlistContext::is_inferred_memory(const ast::Expression &expr)
 {
-
 	return ast::ValueExpressionBase::isKind(expr.kind) &&
 			is_inferred_memory(expr.as<ast::ValueExpressionBase>().symbol);
-}
-
-std::string format_wchunk(RTLIL::SigChunk chunk)
-{
-	log_assert(chunk.wire != nullptr);
-	if (chunk.width == chunk.wire->width)
-		return chunk.wire->name.c_str();
-	else if (chunk.width)
-		return Yosys::stringf("%s[%d]", chunk.wire->name.c_str(), chunk.offset);
-	else
-		return Yosys::stringf("%s[%d:%d]", chunk.wire->name.c_str(), chunk.offset, chunk.offset + chunk.width);
 }
 
 const ast::InstanceBodySymbol &get_instance_body(SynthesisSettings &settings, const ast::InstanceSymbol &instance)
@@ -428,30 +445,30 @@ const ast::InstanceBodySymbol &get_instance_body(SynthesisSettings &settings, co
 
 using VariableState = ProceduralContext::VariableState;
 
-void VariableState::set(VariableBits lhs, RTLIL::SigSpec value)
+void VariableState::set(VariableBits lhs, ir::Value value)
 {
 	log_assert(lhs.bitwidth() == (uint64_t)value.size());
 
 	for (uint64_t i = 0; i < lhs.bitwidth(); i++) {
 		VariableBit bit = lhs[i];
 
-		if (!revert.count(bit)) {
+		if (!pending.revert.count(bit) && !pending.revert_erase.count(bit)) {
 			if (visible_assignments.count(bit))
-				revert[bit] = visible_assignments.at(bit);
+				pending.revert[bit] = visible_assignments.at(bit);
 			else
-				revert[bit] = RTLIL::Sm;
+				pending.revert_erase.insert(bit);
 		}
 
 		visible_assignments[bit] = value[i];
 	}
 }
 
-RTLIL::SigSpec VariableState::evaluate(NetlistContext &netlist, VariableBits vbits)
+ir::Value VariableState::evaluate(NetlistContext &netlist, VariableBits vbits)
 {
-	RTLIL::SigSpec ret;
+	ir::Value ret;
 	for (auto vbit : vbits) {
 		if (vbit.variable.kind == Variable::Dummy) {
-			ret.append(RTLIL::Sx);
+			ret.append(ir::Sx);
 		} else if (visible_assignments.count(vbit)) {
 			ret.append(visible_assignments.at(vbit));
 		} else {
@@ -462,9 +479,9 @@ RTLIL::SigSpec VariableState::evaluate(NetlistContext &netlist, VariableBits vbi
 	return ret;
 }
 
-RTLIL::SigSpec VariableState::evaluate(NetlistContext &netlist, VariableChunk vchunk)
+ir::Value VariableState::evaluate(NetlistContext &netlist, VariableChunk vchunk)
 {
-	RTLIL::SigSpec ret;
+	ir::Value ret;
 	for (uint64_t i = 0; i < vchunk.bitwidth(); i++) {
 		if (visible_assignments.count(vchunk[i])) {
 			ret.append(visible_assignments.at(vchunk[i]));
@@ -476,32 +493,32 @@ RTLIL::SigSpec VariableState::evaluate(NetlistContext &netlist, VariableChunk vc
 	return ret;
 }
 
-void VariableState::save(Map &save)
+void VariableState::save(Snapshot &snap)
 {
-	revert.swap(save);
+	std::swap(pending, snap);
 }
 
-std::pair<VariableBits, RTLIL::SigSpec> VariableState::restore(Map &save)
+std::pair<VariableBits, ir::Value> VariableState::restore(Snapshot &snap)
 {
 	VariableBits lreverted;
-	RTLIL::SigSpec rreverted;
+	ir::Value rreverted;
 
-	for (auto pair : revert)
+	for (auto pair : pending.revert)
 		lreverted.append(pair.first);
+	for (auto bit : pending.revert_erase)
+		lreverted.append(bit);
 	lreverted.sort();
 
-	//rreverted.reserve(lreverted.bitwidth());
+	rreverted.reserve(lreverted.bitwidth());
 	for (auto bit : lreverted)
 		rreverted.append(visible_assignments.at(bit));
 
-	for (auto pair : revert) {
-		if (pair.second == RTLIL::Sm)
-			visible_assignments.erase(pair.first);
-		else
-			visible_assignments[pair.first] = pair.second;
-	}
+	for (auto pair : pending.revert)
+		visible_assignments[pair.first] = pair.second;
+	for (auto bit : pending.revert_erase)
+		visible_assignments.erase(bit);
 
-	save.swap(revert);
+	std::swap(snap, pending);
 	return {lreverted, rreverted};
 }
 
@@ -571,10 +588,10 @@ void NetlistContext::register_driven(const ast::Symbol &symbol)
 	register_driven(Variable::from_symbol(&symbol.as<ast::ValueSymbol>()));
 }
 
-void NetlistContext::add_continuous_driver(VariableBits lhs, RTLIL::SigSpec rhs)
+void NetlistContext::add_continuous_driver(VariableBits lhs, ir::Value rhs)
 {
 	VariableBits cl;
-	RTLIL::SigSpec cr;
+	ir::Value cr;
 
 	for (auto [base, size, chunk] : lhs.chunk_spans()) {
 		if (chunk.variable.is_special_net()) {
@@ -591,14 +608,14 @@ void NetlistContext::add_continuous_driver(VariableBits lhs, RTLIL::SigSpec rhs)
 	connect(convert_static(cl), cr);
 }
 
-RTLIL::SigSpec EvalContext::connection_lhs(ast::AssignmentExpression const &assign)
+ir::Value EvalContext::connection_lhs(ast::AssignmentExpression const &assign)
 {
 	ast_invariant(assign, !assign.timingControl);
 	const ast::Expression *rexpr = &assign.right();
 
 	if (ast::SimpleAssignmentPatternExpression::isKind(assign.left().kind)) {
 		auto &pattern_lexpr = assign.left().as<ast::SimpleAssignmentPatternExpression>();
-		RTLIL::SigSpec link;
+		ir::Value link;
 		auto els = pattern_lexpr.elements();
 		for (auto it = els.rbegin(); it != els.rend(); it++) {
 			ast_invariant(**it, (*it)->kind == ast::ExpressionKind::Assignment);
@@ -621,7 +638,7 @@ RTLIL::SigSpec EvalContext::connection_lhs(ast::AssignmentExpression const &assi
 	ast_invariant(assign, rexpr->kind == ast::ExpressionKind::EmptyArgument);
 	ast_invariant(assign, rexpr->type->isBitstreamType());
 
-	RTLIL::SigSpec link = netlist.add_placeholder_signal(
+	ir::Value link = netlist.add_placeholder_signal(
 								rexpr->type->getBitstreamWidth());
 	netlist.add_continuous_driver(vbits,
 			apply_nested_conversion(assign.right(), link));
@@ -658,18 +675,18 @@ VariableBits EvalContext::streaming_lhs(ast::StreamingConcatenationExpression co
 	}
 }
 
-RTLIL::SigSpec EvalContext::streaming(ast::StreamingConcatenationExpression const &expr)
+ir::Value EvalContext::streaming(ast::StreamingConcatenationExpression const &expr)
 {
 	require(expr, expr.isFixedSize());
-	RTLIL::SigSpec cat;
-	std::vector<RTLIL::SigSpec> parts;
+	ir::Value cat;
+	std::vector<ir::Value> parts;
 
 	auto streams = expr.streams();
 	parts.reserve(streams.size());
 	for (auto stream : streams) {
 		require(*stream.operand, !stream.withExpr);
 		auto& op = *stream.operand;
-		RTLIL::SigSpec item;
+		ir::Value item;
 
 		if (op.kind == ast::ExpressionKind::Streaming)
 			item = streaming(op.as<ast::StreamingConcatenationExpression>());
@@ -685,13 +702,13 @@ RTLIL::SigSpec EvalContext::streaming(ast::StreamingConcatenationExpression cons
 		cat.append(*part_it);
 
 	require(expr, expr.getSliceSize() <= std::numeric_limits<int>::max());
-	int slice = expr.getSliceSize();
+	uint64_t slice = expr.getSliceSize();
 	if (slice == 0) {
 		return cat;
 	} else {
-		RTLIL::SigSpec reorder;
-		std::vector<RTLIL::SigSpec> slices;
-		for (int i = 0; i < cat.size(); i += slice)
+		ir::Value reorder;
+		std::vector<ir::Value> slices;
+		for (uint64_t i = 0; i < cat.size(); i += slice)
 			slices.push_back(cat.extract(i, std::min(slice, cat.size() - i)));
 		// Slice extraction also walks LSB-first, so rebuild in reverse order.
 		for (auto part_it = slices.rbegin(); part_it != slices.rend(); ++part_it)
@@ -700,7 +717,7 @@ RTLIL::SigSpec EvalContext::streaming(ast::StreamingConcatenationExpression cons
 	}
 }
 
-RTLIL::SigSpec EvalContext::apply_conversion(const ast::ConversionExpression &conv, RTLIL::SigSpec op)
+ir::Value EvalContext::apply_conversion(const ast::ConversionExpression &conv, ir::Value op)
 {
 	const ast::Type &from = conv.operand().type->getCanonicalType();
 	const ast::Type &to = conv.type->getCanonicalType();
@@ -720,20 +737,20 @@ RTLIL::SigSpec EvalContext::apply_conversion(const ast::ConversionExpression &co
 	}
 }
 
-RTLIL::SigSpec EvalContext::apply_nested_conversion(const ast::Expression &expr, RTLIL::SigSpec op)
+ir::Value EvalContext::apply_nested_conversion(const ast::Expression &expr, ir::Value op)
 {
 	if (expr.kind == ast::ExpressionKind::EmptyArgument) {
 		return op;
 	} else if (expr.kind == ast::ExpressionKind::Conversion) {
 		auto &conv = expr.as<ast::ConversionExpression>();
-		RTLIL::SigSpec value = apply_nested_conversion(conv.operand(), op);
+		ir::Value value = apply_nested_conversion(conv.operand(), op);
 		return apply_conversion(conv, value);
 	} else {
 		log_abort();
 	}
 }
 
-RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
+ir::Value handle_past(EvalContext &eval, const ast::CallExpression &call)
 {
 	NetlistContext &netlist = eval.netlist;
 	ProceduralContext *procedural = eval.procedural;
@@ -743,12 +760,12 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 	// Note: Full signature is $past(expr, num_ticks, gating_expr, clocking_event) but we only support first 2 args
 	if (call.arguments().size() > 2) {
 		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange);
-		return RTLIL::SigSpec(RTLIL::Sx, (int) call.type->getBitstreamWidth());
+		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
 	}
 	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit
 			|| procedural->timing.triggers.size() != 1 || !procedural->timing_matches_process) {
 		netlist.add_diag(diag::SystemFunctionRequireClockedBlock, call.sourceRange) << call.getSubroutineName();
-		return RTLIL::SigSpec(RTLIL::Sx, (int) call.type->getBitstreamWidth());
+		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
 	}
 
 	// Check num_cycles if specified (2nd argument)
@@ -761,15 +778,15 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 	}
 
 	auto arg = call.arguments()[0];
-	RTLIL::SigSpec current_val = eval(*arg);
+	ir::Value current_val = eval(*arg);
 	int width = current_val.size();
 
 	// Use the first trigger (clock) from the procedural timing
 	auto &trigger = procedural->timing.triggers[0];
 
 	// Create a chain of DFFs for num_cycles delay
-	RTLIL::SigSpec prev_val = current_val;
-	RTLIL::SigSpec past_wire;
+	ir::Value prev_val = current_val;
+	ir::Value past_wire;
 
 	for (int i = 0; i < num_cycles; i++) {
 		past_wire = netlist.add_placeholder_signal(width, "$past");
@@ -786,9 +803,9 @@ RTLIL::SigSpec handle_past(EvalContext &eval, const ast::CallExpression &call)
 	return past_wire;
 }
 
-static const RTLIL::Const reverse_data(RTLIL::Const &orig, int width)
+static const ir::Const reverse_data(ir::Const &orig, int width)
 {
-	std::vector<RTLIL::State> bits;
+	std::vector<ir::Trit> bits;
 	log_assert(orig.size() % width == 0);
 	bits.reserve(orig.size());
 	for (int i = orig.size() - width; i >= 0; i -= width)
@@ -801,11 +818,11 @@ static const RTLIL::Const reverse_data(RTLIL::Const &orig, int width)
  * Copyright (C) 2012  Claire Xenia Wolf <claire@yosyshq.com>
  * Licensed under the ISC License
  */
-int str_to_state_vect(std::vector<RTLIL::State> &data, const char *str, uint64_t mem_width, bool is_hex)
+int str_to_state_vect(std::vector<ir::Trit> &data, const char *str, uint64_t mem_width, bool is_hex)
 {
 	// All digits in string (MSB at index 0)
 	std::vector<uint8_t> digits;
-	std::vector<RTLIL::State> data_word;
+	std::vector<ir::Trit> data_word;
 	data_word.reserve(mem_width);
 
 	while (*str) {
@@ -833,19 +850,19 @@ int str_to_state_vect(std::vector<RTLIL::State> &data, const char *str, uint64_t
 		for (int i = 0; i < bits_per_digit; i++) {
 			int bitmask = 1 << i;
 			if (*it == 0xf0)
-				data_word.push_back(RTLIL::Sx);
+				data_word.push_back(ir::Sx);
 			else if (*it == 0xf1)
-				data_word.push_back(RTLIL::Sz);
+				data_word.push_back(ir::Sx);
 			else
-				data_word.push_back((*it & bitmask) ? RTLIL::S1 : RTLIL::S0);
+				data_word.push_back((*it & bitmask) ? ir::S1 : ir::S0);
 		}
 	}
 
-	RTLIL::State msb = data_word.empty() ? RTLIL::S0 : data_word.back();
+	ir::Trit msb = data_word.empty() ? ir::S0 : data_word.back();
 
 	// Truncate/expand word to memory width
-	if (msb == RTLIL::S0 || msb == RTLIL::S1)
-		data_word.resize(mem_width, RTLIL::S0);
+	if (msb == ir::S0 || msb == ir::S1)
+		data_word.resize(mem_width, ir::S0);
 	else
 		data_word.resize(mem_width, msb);
 
@@ -952,7 +969,7 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 		}
 	}
 
-	std::vector<RTLIL::State> data;
+	std::vector<ir::Trit> data;
 	uint64_t word_size = target_type.getArrayElementType()->getBitstreamWidth();
 	bool in_comment = false;
 	bool no_jumps = true;
@@ -964,7 +981,7 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 	slang::ConstantRange command_range(start_addr, finish_addr);
 
 	auto flush_data = [&]() {
-		RTLIL::Const const_(data);
+		ir::Const const_(data);
 		assert(const_.size() % word_size == 0);
 
 		bool needs_reversal = (increment == -1 && target_range.isDescending()) ||
@@ -1115,7 +1132,7 @@ void handle_display(ProceduralContext &context, const ast::CallExpression &call)
 	fmt.emit_rtlil(cell);
 }
 
-RTLIL::SigSpec EvalContext::sva(ast::Expression const &expr)
+ir::Value EvalContext::sva(ast::Expression const &expr)
 {
 	bool in_sva_expression_save = in_sva_expression;
 	in_sva_expression = true;
@@ -1124,9 +1141,9 @@ RTLIL::SigSpec EvalContext::sva(ast::Expression const &expr)
 	return ret;
 }
 
-RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
+ir::Value EvalContext::operator()(ast::Expression const &expr)
 {
-	RTLIL::SigSpec ret;
+	ir::Value ret;
 	size_t repl_count;
 
 	AttributeGuard guard(netlist);
@@ -1186,8 +1203,8 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 	case ast::ExpressionKind::Inside:
 		{
 			auto &inside_expr = expr.as<ast::InsideExpression>();
-			RTLIL::SigSpec left = (*this)(inside_expr.left());
-			RTLIL::SigSpec hits;
+			ir::Value left = (*this)(inside_expr.left());
+			ir::Value hits;
 			require(inside_expr, inside_expr.left().type->isIntegral());
 
 			for (auto elem : inside_expr.rangeList())
@@ -1219,7 +1236,7 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 				require(valsym, valsym.getInitializer());
 				auto exprconst = valsym.getInitializer()->eval(this->const_);
 				require(valsym, exprconst.isInteger());
-				return convert_svint(exprconst.integer());
+				return netlist.convert_svint(exprconst.integer(), valsym.location);
 			}
 
 			if (ast::ModportPortSymbol::isKind(symbol.kind) &&
@@ -1235,7 +1252,7 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 			if (procedural && (!in_sva_expression || variable1.kind != Variable::Static)) {
 				if (procedural->timing.kind == ProcessTiming::Initial && ast::NetSymbol::isKind(symbol.kind)) {
 					netlist.add_diag(diag::ReadingNetStateFromInitialBlockUnsupported, expr.sourceRange);
-					ret = RTLIL::SigSpec(RTLIL::Sx, (int) expr.type->getBitstreamWidth());
+					ret = ir::Value(ir::Sx, expr.type->getBitstreamWidth());
 					break;
 				}
 				ret = procedural->substitute_rvalue(variable1);
@@ -1247,14 +1264,14 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 	case ast::ExpressionKind::UnaryOp:
 		{
 			const ast::UnaryExpression &unop = expr.as<ast::UnaryExpression>();
-			RTLIL::SigSpec left = (*this)(unop.operand());
+			ir::Value left = (*this)(unop.operand());
 
 			using UnOp = ast::UnaryOperator;
 
 			if (unop.op == UnOp::Postincrement || unop.op == UnOp::Preincrement) {
 				require(expr, procedural != nullptr);
-				RTLIL::SigSpec add1 = netlist.Biop(
-						ID($add), left, {RTLIL::S0, RTLIL::S1},
+				ir::Value add1 = netlist.Biop(
+						ID($add), left, {ir::S0, ir::S1},
 						unop.operand().type->isSigned(), unop.operand().type->isSigned(),
 						left.size());
 				procedural->do_simple_assign(expr.sourceRange.start(),
@@ -1265,8 +1282,8 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 
 			if (unop.op == UnOp::Postdecrement || unop.op == UnOp::Predecrement) {
 				require(expr, procedural != nullptr);
-				RTLIL::SigSpec sub1 = netlist.Biop(
-						ID($sub), left, {RTLIL::S0, RTLIL::S1},
+				ir::Value sub1 = netlist.Biop(
+						ID($sub), left, {ir::S0, ir::S1},
 						unop.operand().type->isSigned(), unop.operand().type->isSigned(),
 						left.size());
 				procedural->do_simple_assign(expr.sourceRange.start(),
@@ -1304,8 +1321,8 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 	case ast::ExpressionKind::BinaryOp:
 		{
 			const ast::BinaryExpression &biop = expr.as<ast::BinaryExpression>();
-			RTLIL::SigSpec left = (*this)(biop.left());
-			RTLIL::SigSpec right = (*this)(biop.right());
+			ir::Value left = (*this)(biop.left());
+			ir::Value right = (*this)(biop.right());
 
 			bool invert;
 			switch (biop.op) {
@@ -1353,8 +1370,8 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 			case ast::BinaryOperator::LessThan:			type = ID($lt); break;
 			case ast::BinaryOperator::LogicalAnd:	type = ID($logic_and); break;
 			case ast::BinaryOperator::LogicalOr:	type = ID($logic_or); break;
-			case ast::BinaryOperator::LogicalImplication: type = ID($logic_or); left = netlist.LogicNot(left); a_signed = false; break;
-			case ast::BinaryOperator::LogicalEquivalence: type = ID($eq); left = netlist.ReduceBool(left); right = netlist.ReduceBool(right); a_signed = b_signed = false; break;
+			case ast::BinaryOperator::LogicalImplication: type = ID($logic_or); left = {netlist.LogicNot(left)}; a_signed = false; break;
+			case ast::BinaryOperator::LogicalEquivalence: type = ID($eq); left = {netlist.ReduceBool(left)}; right = {netlist.ReduceBool(right)}; a_signed = b_signed = false; break;
 			case ast::BinaryOperator::LogicalShiftLeft:	type = ID($shl); break;
 			case ast::BinaryOperator::LogicalShiftRight:	type = ID($shr); break;
 			case ast::BinaryOperator::ArithmeticShiftLeft:	type = ID($sshl); break;
@@ -1394,18 +1411,18 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 
 				// evaluate the bitstream
 				auto &stream_expr = conv.operand().as<ast::StreamingConcatenationExpression>();
-				RTLIL::SigSpec stream = streaming(stream_expr);
+				ir::Value stream = streaming(stream_expr);
 
 				// pad to fit target size
 				ast_invariant(conv, stream.size() <= (int) expr.type->getBitstreamWidth());
-				ret = {stream, RTLIL::SigSpec(RTLIL::S0, expr.type->getBitstreamWidth() - stream.size())};
+				ret = {stream, ir::Value(ir::S0, expr.type->getBitstreamWidth() - stream.size())};
 			}
 		}
 		break;
 	case ast::ExpressionKind::IntegerLiteral:
 		{
 			const ast::IntegerLiteral &lit = expr.as<ast::IntegerLiteral>();
-			ret = convert_svint(lit.getValue());
+			ret = netlist.convert_svint(lit.getValue(), expr.sourceRange.start());
 		}
 		break;
 	case ast::ExpressionKind::RangeSelect:
@@ -1456,7 +1473,7 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 		{
 			const ast::ConcatenationExpression &concat = expr.as<ast::ConcatenationExpression>();
 			auto operands = concat.operands();
-			std::vector<RTLIL::SigSpec> parts;
+			std::vector<ir::Value> parts;
 			parts.reserve(operands.size());
 			for (auto op : operands)
 				parts.push_back((*this)(*op));
@@ -1481,7 +1498,7 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 			auto elements = pattern_expr.elements();
 
 			ret = {};
-			std::vector<RTLIL::SigSpec> parts;
+			std::vector<ir::Value> parts;
 			parts.reserve(elements.size());
 			for (auto elem : elements)
 				parts.push_back((*this)(*elem));
@@ -1511,7 +1528,7 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 			auto count = repl.count().eval(const_);
 			ast_invariant(expr, count.isInteger());
 			int reps = count.integer().as<int>().value(); // TODO: checking int cast
-			RTLIL::SigSpec concat = (*this)(repl.concat());
+			ir::Value concat = (*this)(repl.concat());
 			for (int i = 0; i < reps; i++)
 				ret.append(concat);
 		}
@@ -1585,20 +1602,20 @@ RTLIL::SigSpec EvalContext::operator()(ast::Expression const &expr)
 
 	if (0) {
 error:
-	ret = RTLIL::SigSpec(RTLIL::Sx, (int) expr.type->getBitstreamWidth());
+	ret = ir::Value(ir::Sx, expr.type->getBitstreamWidth());
 	}
 
 done:
-	ast_invariant(expr, ret.size() == (int) expr.type->getBitstreamWidth());
+	ast_invariant(expr, ret.width() == expr.type->getBitstreamWidth());
 	return ret;
 }
 
-RTLIL::SigSpec EvalContext::eval_signed(ast::Expression const &expr)
+ir::Value EvalContext::eval_signed(ast::Expression const &expr)
 {
 	log_assert(expr.type);
 
 	if (expr.type->isNumeric() && !expr.type->isSigned())
-		return {RTLIL::S0, (*this)(expr)};
+		return {ir::S0, (*this)(expr)};
 	else
 		return (*this)(expr);
 }
@@ -1691,7 +1708,7 @@ public:
 		}
 
 		// left-hand side and right-hand side of the connections to be made
-		RTLIL::SigSpec cr;
+		ir::Value cr;
 		VariableBits cl, latch_driven;
 
 		for (auto driven_bit : all_driven) {
@@ -1760,11 +1777,11 @@ public:
 
 		ProcessTiming prologue_timing(ProcessTiming::EdgeTriggered);
 		{
-			prologue_timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
+			prologue_timing.triggers.push_back({netlist.eval(clock.expr).as_net(), clock.edge == ast::EdgeKind::PosEdge, &clock});
 			for (auto &abranch : async)	{
-				RTLIL::SigSpec sig = netlist.convert_static(abranch.trigger);
+				ir::Value sig = netlist.convert_static(abranch.trigger);
 				log_assert(sig.size() == 1);
-				prologue_timing.triggers.push_back({sig, abranch.polarity, nullptr});
+				prologue_timing.triggers.push_back({sig.as_net(), abranch.polarity, nullptr});
 			}
 		}
 		ProceduralContext prologue(netlist, prologue_timing);
@@ -1777,20 +1794,20 @@ public:
 		prologue.copy_case_tree_into(proc->root_case);
 
 		struct Aload {
-			RTLIL::SigBit trigger;
+			ir::Net trigger;
 			bool trigger_polarity;
 			VariableState values;
 			const ast::Statement *ast_node;
 		};
 		std::vector<Aload> aloads;
-		RTLIL::SigSpec prior_branch_taken;
+		ir::Value prior_branch_taken;
 
 		for (auto &async_branch : async) {
-			RTLIL::SigSpec sig = netlist.convert_static(async_branch.trigger);
+			ir::Value sig = netlist.convert_static(async_branch.trigger);
 			log_assert(sig.size() == 1);
 
 			ProcessTiming branch_timing(ProcessTiming::Implicit);
-			RTLIL::SigSpec sig_depol = async_branch.polarity ? sig : netlist.LogicNot(sig);
+			ir::Value sig_depol = async_branch.polarity ? sig : netlist.LogicNot(sig);
 			branch_timing.background_enable = netlist.LogicAnd(netlist.LogicNot(prior_branch_taken), sig_depol);
 			prior_branch_taken.append(sig_depol);
 
@@ -1802,7 +1819,7 @@ public:
 			async_branch.body.visit(StatementExecutor(branch));
 			branch.copy_case_tree_into(proc->root_case);
 			aloads.push_back({
-				sig, async_branch.polarity, branch.vstate, &async_branch.body
+				sig.as_net(), async_branch.polarity, branch.vstate, &async_branch.body
 			});
 			// TODO: check for non-constant load values and warn about sim/synth mismatch
 		}
@@ -1813,13 +1830,13 @@ public:
 		}
 
 		{
-			RTLIL::SigSpec event_guard = RTLIL::S1;
+			ir::Net event_guard = ir::S1;
 			if (clock.iffCondition)
 				event_guard = netlist.ReduceBool(netlist.eval(*clock.iffCondition));
 
 			ProcessTiming timing(ProcessTiming::EdgeTriggered);
 			timing.background_enable = netlist.LogicAnd(netlist.LogicNot(prior_branch_taken), event_guard);
-			timing.triggers.push_back({netlist.eval(clock.expr), clock.edge == ast::EdgeKind::PosEdge, &clock});
+			timing.triggers.push_back({netlist.eval(clock.expr).as_net(), clock.edge == ast::EdgeKind::PosEdge, &clock});
 
 			ProceduralContext sync_branch(netlist, timing);
 			if (!aloads.empty())
@@ -1833,7 +1850,7 @@ public:
 			VariableBits driven = sync_branch.all_driven();
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
-				RTLIL::SigSpec assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
+				ir::Value assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
 
 				AttributeGuard guard(netlist);
 				transfer_attrs(netlist, symbol, guard);
@@ -1850,10 +1867,10 @@ public:
 
 							netlist.add_dual_edge_aldff(base_name,
 														timing.triggers[0].signal,
-														RTLIL::S0,
-														assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth()),
+														ir::S0,
+														assigned.extract(named_chunk.base - driven_chunk.base, named_chunk.bitwidth()),
 														netlist.convert_static(named_chunk),
-														RTLIL::SigSpec(RTLIL::Sx, (int)named_chunk.bitwidth()),
+														ir::Value(ir::Sx, named_chunk.bitwidth()),
 														true);
 						} else {
 							netlist.add_dffe(base_name,
@@ -1897,7 +1914,7 @@ public:
 															aloads[0].values.evaluate(netlist, named_chunk),
 															aloads[0].trigger_polarity);
 							} else {
-								RTLIL::SigSpec next_value = assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth());
+								ir::Value next_value = assigned.extract((int)(named_chunk.base - driven_chunk.base), (int)named_chunk.bitwidth());
 
 								netlist.add_aldffe(base_name,
 												  timing.triggers[0].signal,
@@ -1926,7 +1943,7 @@ public:
 							auto symbol = named_chunk.variable.get_symbol();
 							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
-							bool has_event_guard = !(event_guard.is_fully_def() && event_guard.as_bool());
+							bool has_event_guard = !(event_guard.is_def() && event_guard == ir::S1);
 							netlist.add_dffe(base_name,
 											 timing.triggers[0].signal,
 											 has_event_guard ? timing.background_enable : aloads[0].trigger,
@@ -2003,7 +2020,7 @@ public:
 			return;
 		}
 
-		RTLIL::Wire *w = netlist.wire(*symbol.internalSymbol).as_wire();
+		RTLIL::Wire *w = netlist.wire(*symbol.internalSymbol).raw().as_wire();
 		log_assert(w);
 		switch (symbol.direction) {
 		case ast::ArgumentDirection::In:
@@ -2044,7 +2061,7 @@ public:
 		netlist.add_diag(diag::MultiportUnsupported, sym.location);
 	}
 
-	void inline_port_connection(const ast::PortSymbol &port, RTLIL::SigSpec connection, [[maybe_unused]] slang::SourceRange range)
+	void inline_port_connection(const ast::PortSymbol &port, ir::Value connection, [[maybe_unused]] slang::SourceRange range)
 	{
 		if (port.isNullPort)
 			return;
@@ -2088,7 +2105,7 @@ public:
 		}
 	}
 
-	void inline_port_connection_driver(const ast::PortSymbol &port, RTLIL::SigSpec connection, [[maybe_unused]] slang::SourceRange range)
+	void inline_port_connection_driver(const ast::PortSymbol &port, ir::Value connection, [[maybe_unused]] slang::SourceRange range)
 	{
 		if (port.isNullPort)
 			return;
@@ -2165,9 +2182,9 @@ public:
 				if (converted) {
 					if (symbol.isImplicitString(slang::SourceRange(sym.location, sym.location))
 							&& converted->size() % 8 == 0) {
-						converted->flags |= RTLIL::CONST_FLAG_STRING;
+						converted->raw_rtlil().flags |= RTLIL::CONST_FLAG_STRING;
 					}
-					cell->setParam(RTLIL::escape_id(std::string(symbol.name)), *converted);
+					cell->setParam(RTLIL::escape_id(std::string(symbol.name)), converted->to_rtlil());
 				}
 			}, [&](auto&, const ast::TypeParameterSymbol &symbol) {
 				netlist.add_diag(diag::BboxTypeParameter, symbol.location);
@@ -2199,7 +2216,7 @@ public:
 					auto &multiport = conn->port.as<ast::MultiPortSymbol>();
 					switch (multiport.direction) {
 					case ast::ArgumentDirection::In: {
-						RTLIL::SigSpec connection = netlist.eval(expr);
+						ir::Value connection = netlist.eval(expr);
 						int offset = 0;
 						for (auto component : multiport.ports) {
 							int width = component->getType().getBitstreamWidth();
@@ -2295,7 +2312,7 @@ public:
 					if (!conn->getExpression())
 						continue;
 					auto &expr = *conn->getExpression();
-					RTLIL::SigSpec signal;
+					ir::Value signal;
 					if (expr.kind == ast::ExpressionKind::Assignment) {
 						auto &assign = expr.as<ast::AssignmentExpression>();
 						signal = netlist.eval.connection_lhs(assign);
@@ -2321,10 +2338,10 @@ public:
 						}
 
 						modport.visit(ast::makeVisitor([&](auto&, const ast::ModportPortSymbol &port) {
-							RTLIL::SigSpec port_sig;
+							ir::Value port_sig;
 							if (inserted) {
 								port_sig = submodule.add_wire(port);
-								RTLIL::Wire *w = port_sig.as_wire();
+								RTLIL::Wire *w = port_sig.raw_.as_wire();
 								log_assert(w);
 								switch (port.direction) {
 								case ast::ArgumentDirection::In:
@@ -2354,7 +2371,7 @@ public:
 							ast_invariant(port, parent->asSymbol().kind == ast::SymbolKind::Modport);
 							const ast::ModportSymbol &modport = parent->asSymbol().as<ast::ModportSymbol>();
 
-							RTLIL::IdString port_name = port_sig.as_wire()->name;
+							RTLIL::IdString port_name = port_sig.raw_.as_wire()->name;
 							if (netlist.scopes_remap.count(&modport)) {
 								cell->setPort(port_name, netlist.wire(port));
 								if (port.direction == ast::ArgumentDirection::Out || port.direction == ast::ArgumentDirection::InOut)
@@ -2388,7 +2405,7 @@ public:
 		const ast::AssignmentExpression &expr = sym.getAssignment().as<ast::AssignmentExpression>();
 		ast_invariant(expr, !expr.timingControl);
 
-		RTLIL::SigSpec rvalue = netlist.eval(expr.right());
+		ir::Value rvalue = netlist.eval(expr.right());
 
 		if (expr.left().kind == ast::ExpressionKind::Streaming) {
 			auto& stream_lexpr = expr.left().as<ast::StreamingConcatenationExpression>();
@@ -2401,7 +2418,7 @@ public:
 
 		if (ast::SimpleAssignmentPatternExpression::isKind(expr.left().kind)) {
 			auto &pattern_lexpr = expr.left().as<ast::SimpleAssignmentPatternExpression>();
-			RTLIL::SigSpec link;
+			ir::Value link;
 			auto els = pattern_lexpr.elements();
 			for (auto it = els.rbegin(); it != els.rend(); it++) {
 				ast_invariant(**it, (*it)->kind == ast::ExpressionKind::Assignment);
@@ -2609,7 +2626,7 @@ public:
 					visitor.visitDefault(modport);
 			},
 			[&](auto &, const ast::ModportPortSymbol &port) {
-				RTLIL::Wire *w = netlist.wire(port).as_wire();
+				RTLIL::Wire *w = netlist.wire(port).raw().as_wire();
 				log_assert(w);
 				switch (port.direction) {
 				case ast::ArgumentDirection::In:
@@ -2783,8 +2800,8 @@ public:
 						in = mid_wire;
 						transfer_attrs(netlist, sym, inv_cell);
 					}
-					auto a = inv_en ? in : RTLIL::Sz;
-					auto b = inv_en ? RTLIL::Sz : in;
+					ir::Value a = inv_en ? in : ir::Value(RTLIL::SigSpec(RTLIL::Sz));
+					ir::Value b = inv_en ? ir::Value(RTLIL::SigSpec(RTLIL::Sz)) : in;
 					auto en = netlist.eval(*ports[2]);
 					cell = netlist.canvas->addMux(id, a, b, en, y);
 				} else if (!type.compare("cmos") || !type.compare("rcmos")) {
@@ -3036,7 +3053,7 @@ bool is_special_net(const ast::Symbol &symbol)
 		&& is_special_net_type(symbol.as<ast::NetSymbol>().netType);
 }
 
-const RTLIL::SigSpec& NetlistContext::add_wire(const ast::ValueSymbol &symbol)
+const ir::Value &NetlistContext::add_wire(const ast::ValueSymbol &symbol)
 {
 	auto &type = symbol.getType();
 
@@ -3044,12 +3061,12 @@ const RTLIL::SigSpec& NetlistContext::add_wire(const ast::ValueSymbol &symbol)
 	guard.set(ID::hdlname, hdlname(symbol));
 	transfer_attrs(*this, symbol, guard);
 
-	RTLIL::SigSpec sig = add_placeholder_signal(type.getBitstreamWidth(), id(symbol), true);
+	ir::Value sig = add_placeholder_signal(type.getBitstreamWidth(), id(symbol), true);
 
 	if (type.kind == ast::SymbolKind::PackedArrayType &&
 			type.as<ast::PackedArrayType>().elementType.isScalar()) {
 		auto range = type.getFixedRange();
-		auto *w = sig.as_wire();
+		auto *w = sig.raw_.as_wire();
 		if (!range.isDescending())
 			w->upto = true;
 		w->start_offset = range.lower();
@@ -3062,7 +3079,7 @@ const RTLIL::SigSpec& NetlistContext::add_wire(const ast::ValueSymbol &symbol)
 			special_net_symbols.push_back(&net);
 		}
 	}
-	return wire_cache[&symbol];
+	return wire_cache.at(&symbol);
 }
 
 void finalize_special_nets(NetlistContext &netlist)
@@ -3281,7 +3298,7 @@ bool NetlistContext::check_hier_ref(const ast::ValueSymbol &symbol, slang::Sourc
 	return true;
 }
 
-const RTLIL::SigSpec& NetlistContext::wire(const ast::Symbol &symbol)
+const ir::Value &NetlistContext::wire(const ast::Symbol &symbol)
 {
 	auto it = wire_cache.find(&symbol);
 	if (it == wire_cache.end())
@@ -3289,19 +3306,15 @@ const RTLIL::SigSpec& NetlistContext::wire(const ast::Symbol &symbol)
 	return it->second;
 }
 
-RTLIL::SigSpec NetlistContext::convert_static(VariableBits bits)
+ir::Value NetlistContext::convert_static(VariableBits bits)
 {
-	RTLIL::SigSpec ret;
+	ir::Value ret;
 
 	for (auto vchunk : bits.chunks()) {
 		switch (vchunk.variable.kind) {
 		case Variable::Static: {
-			const RTLIL::SigSpec &signal = wire(*vchunk.variable.get_symbol());
-			// Avoid per-bit SigSpec::extract() work for the normal one-chunk wire case.
-			if (signal.is_chunk())
-				ret.append(signal.as_chunk().extract((int)vchunk.base, (int)vchunk.length));
-			else
-				ret.append(signal.extract((int)vchunk.base, (int)vchunk.length));
+			const ir::Value &signal = wire(*vchunk.variable.get_symbol());
+			ret.append(signal.extract((int)vchunk.base, (int)vchunk.length));
 			break;
 		}
 		case Variable::Dummy:

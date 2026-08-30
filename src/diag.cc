@@ -136,6 +136,7 @@ DiagCode ReadmemWordsRangeMismatch(DiagSubsystem::Netlist, 1082);
 DiagCode ReadmemBadBinaryDigit(DiagSubsystem::Netlist, 1083);
 DiagCode NoIgnoreUnknownModules(DiagSubsystem::Netlist, 1084);
 DiagCode HierarchicalRefOutsideModulesUnsupported(DiagSubsystem::Netlist, 1085);
+DiagCode HighImpedanceUnsupported(DiagSubsystem::Netlist, 1086);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -361,6 +362,9 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(HierarchicalRefOutsideModulesUnsupported, "hierarchical reference outside module hierarchy unsupported");
 	engine.setSeverity(HierarchicalRefOutsideModulesUnsupported, DiagnosticSeverity::Error);
+
+	engine.setMessage(HighImpedanceUnsupported, "high-impedance state (Z) unsupported in this context");
+	engine.setSeverity(HighImpedanceUnsupported, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag

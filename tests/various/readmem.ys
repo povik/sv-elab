@@ -127,7 +127,7 @@ module top6(input [1:0] addr);
 
 	initial begin
 		$readmemb("readmem_xz.bin", x);
-		y = '{8'bzz1100xx, 8'bxxzz0011, 8'bzzzzzzzz, 8'bxxxxxxxx};
+		y = '{8'bxx1100xx, 8'bxxxx0011, 8'bxxxxxxxx, 8'bxxxxxxxx};
 	end
 
 	wire [7:0] lhs = x[addr];

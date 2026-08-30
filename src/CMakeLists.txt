@@ -24,6 +24,7 @@ add_library(yosys-slang ${LIBRARY_TYPE}
     diag.h
     driver.cc
     initialization.cc
+    ir.cc
     lvalue.cc
     memory.h
     naming.cc
