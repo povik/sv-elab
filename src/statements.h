@@ -452,6 +452,7 @@ public:
 		default:                                netlist.add_diag(diag::AssertionUnsupported, statement.sourceRange); return;
 		}
 
+#ifndef SLANG_NO_YOSYS
 		RTLIL::IdString cell_name;
 
 		if (containing_block &&
@@ -473,6 +474,10 @@ public:
 		cell->setPort(ID::ARGS, {});
 		cell->setPort(ID::A, {netlist.ReduceBool(eval(statement.cond))});
 		transfer_attrs(netlist, statement, cell);
+#else
+		// TODO(dummy): lower $check through the backend-agnostic interface
+		netlist.add_diag(diag::AssertionUnsupported, statement.sourceRange);
+#endif
 	}
 
 	void handle(const ast::ConcurrentAssertionStatement &statement)
@@ -481,7 +486,11 @@ public:
 			if (statement.assertionKind == ast::AssertionKind::Expect) {
 				netlist.add_diag(diag::ExpectStatementUnsupported, statement.sourceRange);
 			} else {
+#ifndef SLANG_NO_YOSYS
 				process_sva_property(statement, containing_block, context, statement.propertySpec);
+#else
+				netlist.add_diag(diag::AssertionUnsupported, statement.sourceRange);
+#endif
 			}
 		}
 	}

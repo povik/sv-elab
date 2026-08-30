@@ -20,7 +20,9 @@
 #include <string>
 
 #include "backend_builder.h"
+#ifndef SLANG_NO_YOSYS
 #include "cases.h"
+#endif
 #include "diag.h"
 #include "slang/text/SourceLocation.h"
 #include "slang_frontend.h"
@@ -124,7 +126,9 @@ void ProceduralContext::inherit_state(ProceduralContext &other)
 	assert(seen_nonblocking_assignment.empty());
 	seen_blocking_assignment = other.seen_blocking_assignment;
 	seen_nonblocking_assignment = other.seen_nonblocking_assignment;
+#ifndef SLANG_NO_YOSYS
 	preceding_memwr = other.preceding_memwr;
+#endif
 	vstate = other.vstate;
 	flag_counter = other.flag_counter;
 }
@@ -395,6 +399,7 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 				{ir::Value(ir::Sx, pad), rvalue, ir::Value(ir::Sx, member_acc->base_offset)},
 				{ir::Value(ir::S0, pad), mask, ir::Value(ir::S0, member_acc->base_offset)},
 				blocking);
+#ifndef SLANG_NO_YOSYS
 	} else if (auto mem_write = std::get_if<LValue::MemoryWrite>(&lvalue.descriptor)) {
 		auto &netlist = context.netlist;
 		RTLIL::Cell *cell =
@@ -436,6 +441,7 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 		cell->setPort(ID::ADDR, mem_write->address);
 		cell->setParam(ID::WIDTH, rvalue.size());
 		cell->setPort(ID::DATA, rvalue);
+#endif // SLANG_NO_YOSYS
 	} else {
 		// unreachable
 		log_abort();

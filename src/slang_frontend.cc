@@ -25,8 +25,6 @@
 #include <vector>
 
 #include "slang/ast/ASTVisitor.h"
-#include "kernel/yosys_common.h"
-#include "kernel/log.h"
 #include "slang/ast/Compilation.h"
 #include "slang/ast/EvalContext.h"
 #include "slang/ast/Expression.h"
@@ -67,6 +65,9 @@
 #include "slang/util/SmallVector.h"
 #include "slang/util/Util.h"
 
+#ifndef SLANG_NO_YOSYS
+#include "kernel/yosys_common.h"
+#include "kernel/log.h"
 #include "kernel/bitpattern.h"
 #include "kernel/celltypes.h"
 #include "kernel/fmt.h"
@@ -74,6 +75,7 @@
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
 #include "kernel/utils.h"
+#endif
 
 #ifndef SLANG_MUX_LOWERING
 #include "cases.h"
@@ -178,10 +180,12 @@ namespace parsing = slang::parsing;
 
 namespace slang_frontend {
 
+#ifndef SLANG_NO_YOSYS
 static const RTLIL::IdString rtlil_id(const std::string_view &view)
 {
 	return RTLIL::escape_id(std::string(view));
 }
+#endif
 
 uint64_t bitstream_member_offset(const ast::FieldSymbol &member)
 {
@@ -277,7 +281,9 @@ const std::optional<ir::Const> NetlistContext::convert_const(const slang::Consta
 		return bits;
 	} else if (constval.isString()) {
 		ir::Const ret = convert_svint(constval.convertToInt().integer(), loc);
+#ifndef SLANG_NO_YOSYS
 		ret.raw_rtlil().flags |= RTLIL::CONST_FLAG_STRING;
+#endif
 		return ret;
 	} else if (constval.isNullHandle()) {
 		return {};
@@ -364,6 +370,7 @@ namespace slang_frontend {
 #endif // SLANG_MUX_LOWERING
 
 // extract trigger for side-effect cells like $print, $check
+#ifndef SLANG_NO_YOSYS
 void ProcessTiming::extract_trigger(NetlistContext &netlist, Yosys::Cell *cell, ir::Net enable)
 {
 	auto &params = cell->parameters;
@@ -409,6 +416,7 @@ void ProceduralContext::set_effects_trigger(RTLIL::Cell *cell)
 	ir::Net en = case_enable();
 	timing.extract_trigger(netlist, cell, en);
 }
+#endif // SLANG_NO_YOSYS
 
 ir::Net matches_pattern(NetlistContext &netlist, const ValuePattern &pattern, ir::Value &value)
 {
@@ -1116,8 +1124,9 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 }
 // clang-format off
 
-void handle_display(ProceduralContext &context, const ast::CallExpression &call)
+void handle_display([[maybe_unused]] ProceduralContext &context, [[maybe_unused]] const ast::CallExpression &call)
 {
+#ifndef SLANG_NO_YOSYS
 	NetlistContext &netlist = context.netlist;
 	auto cell = netlist.backend->canvas->addCell(netlist.backend->new_id(), ID($print));
 	transfer_attrs(context.netlist, call, cell);
@@ -1161,6 +1170,7 @@ void handle_display(ProceduralContext &context, const ast::CallExpression &call)
 	if (call.getSubroutineName() == "$display")
 		fmt.append_literal("\n");
 	fmt.emit_rtlil(cell);
+#endif
 }
 
 ir::Value EvalContext::sva(ast::Expression const &expr)
@@ -1429,6 +1439,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			const ast::ElementSelectExpression &elemsel = expr.as<ast::ElementSelectExpression>();
 
 			if (netlist.is_inferred_memory(elemsel.value()) && !in_sva_expression) {
+#ifndef SLANG_NO_YOSYS
 				int width = elemsel.type->getBitstreamWidth();
 				std::string id = netlist.id(elemsel.value()
 										.as<ast::ValueExpressionBase>().symbol);
@@ -1455,6 +1466,10 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 				memrd->setParam(ID::WIDTH, width);
 				transfer_attrs(netlist, expr, memrd);
 				break;
+#else
+				// Unreachable: memory inference is disabled under SLANG_NO_YOSYS
+				log_abort();
+#endif
 			}
 
 			AddressingResolver addr(*this, elemsel);
@@ -2004,15 +2019,21 @@ public:
 									ast::ImmediateAssertionStatement::isKind(body->kind));
 			if (!netlist.settings.ignore_assertions.value_or(false)) {
 				if (ast::ConcurrentAssertionStatement::isKind(body->kind)) {
+#ifndef SLANG_NO_YOSYS
 					process_freestanding_sva_property(netlist, body->as<ast::ConcurrentAssertionStatement>(),
 													  block_symbol);
+#else
+					netlist.add_diag(diag::AssertionUnsupported, body->sourceRange);
+#endif
 				} else {
 					ProceduralContext procedure(netlist, ProcessTiming::implicit);
 					symbol.getBody().visit(StatementExecutor(procedure));
+#ifndef SLANG_NO_YOSYS
 					RTLIL::Process *rtlil_proc = netlist.backend->canvas->addProcess(netlist.backend->new_id());
 					transfer_attrs(netlist, symbol, rtlil_proc);
-#ifndef SLANG_MUX_LOWERING
+# ifndef SLANG_MUX_LOWERING
 					procedure.copy_case_tree_into(rtlil_proc->root_case);
+# endif
 #endif
 				}
 			}
@@ -2383,6 +2404,7 @@ public:
 			ast_invariant(sym, ref_body->parentInstance != nullptr);
 			auto [submodule, inserted] = queue.get_or_emplace(ref_body, netlist, *ref_body->parentInstance);
 
+#ifndef SLANG_NO_YOSYS
 			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), RTLIL::escape_id(module_type_id(*ref_body)));
 			cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
 			for (auto *conn : sym.getPortConnections()) {
@@ -2479,6 +2501,51 @@ public:
 				}
 			}
 			transfer_attrs(netlist, sym, cell);
+#else
+			// Lower the kept instantiation through the backend-agnostic
+			// add_instance interface
+			std::vector<BackendGraphBuilderBase::PortConnection> ports;
+			for (auto *conn : sym.getPortConnections()) {
+				if (conn->port.kind == ast::SymbolKind::InterfacePort) {
+					auto &d = netlist.add_diag(diag::IfacePortUnsupported, conn->port.location);
+					d << sym.body.name;
+					continue;
+				}
+				if (!conn->getExpression() || conn->port.kind != ast::SymbolKind::Port)
+					continue;
+				auto &expr = *conn->getExpression();
+
+				auto &port = conn->port.as<ast::PortSymbol>();
+				BackendGraphBuilderBase::PortConnection::Direction dir;
+				ir::Value sig;
+
+				switch (port.direction) {
+				case ast::ArgumentDirection::In:
+					dir = BackendGraphBuilderBase::PortConnection::kInput;
+					sig = netlist.eval(expr);
+					break;
+				case ast::ArgumentDirection::Out: {
+					dir = BackendGraphBuilderBase::PortConnection::kOutput;
+					ast_invariant(expr, ast::AssignmentExpression::isKind(expr.kind));
+					auto &assign = expr.as<ast::AssignmentExpression>();
+					sig = netlist.eval.connection_lhs(assign);
+					break;
+				}
+				case ast::ArgumentDirection::InOut:
+					dir = BackendGraphBuilderBase::PortConnection::kInOut;
+					sig = netlist.eval(expr);
+					break;
+				default:
+					continue;
+				}
+
+				ports.push_back({std::string(port.name), dir, sig});
+			}
+
+			netlist.add_instance(module_type_id(sym.body), std::move(ports));
+			(void)submodule;
+			(void)inserted;
+#endif
 		}
 	}
 
@@ -2577,6 +2644,7 @@ public:
 			log_debug("Adding %s (%s)\n", netlist.id(sym).c_str(), kind.c_str());
 
 			if (netlist.is_inferred_memory(sym)) {
+#ifndef SLANG_NO_YOSYS
 				RTLIL::Memory *m = new RTLIL::Memory;
 				m->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
 				transfer_attrs(netlist, sym, m);
@@ -2590,6 +2658,10 @@ public:
 
 				log_debug("Memory inferred for variable %s (size: %d, width: %d)\n",
 						  log_id(m->name), m->size, m->width);
+#else
+				// Unreachable: memory inference is disabled under SLANG_NO_YOSYS
+				log_abort();
+#endif
 			} else {
 				netlist.add_wire(sym);
 			}
@@ -2649,9 +2721,13 @@ public:
 	void handle(const ast::InstanceBodySymbol &body)
 	{
 		if (&body == &netlist.realm) {
+#ifndef SLANG_NO_YOSYS
 			// This is the containing instance body for this netlist;
-			// find inferred memories
+			// find inferred memories. Without Yosys there is no memory
+			// lowering, so nothing is ever inferred as a memory and the
+			// memory read/write handling stays unreachable.
 			detect_memories(body);
+#endif
 			// add all internal wires before we enter the body
 			if (!add_internal_wires(body)) {
 				return;
@@ -2705,6 +2781,7 @@ public:
 		if (iface_sym->kind != ast::SymbolKind::Instance)
 			return;
 
+#ifndef SLANG_NO_YOSYS
 		iface_sym->visit(ast::makeVisitor(
 			[&](auto &visitor, const ast::ModportSymbol &modport) {
 				if (!modport.name.compare(ref_modport->name))
@@ -2734,6 +2811,10 @@ public:
 				}
 			}
 		));
+#else
+		auto &d = netlist.add_diag(diag::IfacePortUnsupported, symbol.location);
+		d << netlist.realm.parentInstance->body.name;
+#endif
 	}
 	void handle(const ast::GenericClassDefSymbol&) {}
 	void handle(const ast::LetDeclSymbol&) {}
@@ -2753,6 +2834,7 @@ public:
 
 	void handle(const ast::PrimitiveInstanceSymbol &sym)
 	{
+#ifndef SLANG_NO_YOSYS
 		auto ports = sym.getPortConnections();
 		auto type = sym.primitiveType.name;
 		auto id = (!sym.name.compare("")) ? netlist.backend->new_id() : netlist.id(sym);
@@ -2923,6 +3005,10 @@ public:
 			cell->setPort(ID::Y, mid_wire);
 			transfer_attrs(netlist, sym, inv_cell);
 		}
+#else
+		netlist.add_diag(diag::PrimTypeUnsupported, sym.location)
+				<< std::string{sym.primitiveType.name};
+#endif
 	}
 
 	void handle(const ast::PropertySymbol &sym) {
@@ -3097,7 +3183,11 @@ std::string build_hiername(NetlistContext &netlist, const ast::Symbol &symbol,
 
 std::string NetlistContext::id(const ast::Symbol &symbol)
 {
+#ifdef SLANG_NO_YOSYS
+	return build_hiername(*this, symbol, ".");
+#else
 	return RTLIL::escape_id(build_hiername(*this, symbol, "."));
+#endif
 }
 
 std::string NetlistContext::unescaped_id(const ast::Symbol &symbol)
@@ -3143,18 +3233,24 @@ const ir::Value &NetlistContext::add_wire(const ast::ValueSymbol &symbol)
 	auto &type = symbol.getType();
 
 	AttributeGuard guard(*this);
+#ifndef SLANG_NO_YOSYS
 	guard.set(ID::hdlname, hdlname(symbol));
+#else
+	guard.set("hdlname", hdlname(symbol));
+#endif
 	transfer_attrs(*this, symbol, guard);
 
 	ir::Value sig = add_placeholder_signal(type.getBitstreamWidth(), id(symbol), true);
 
 	if (type.kind == ast::SymbolKind::PackedArrayType &&
 			type.as<ast::PackedArrayType>().elementType.isScalar()) {
+#ifndef SLANG_NO_YOSYS
 		auto range = type.getFixedRange();
 		auto *w = sig.raw_.as_wire();
 		if (!range.isDescending())
 			w->upto = true;
 		w->start_offset = range.lower();
+#endif
 	}
 
 	wire_cache[&symbol] = sig;
@@ -3169,6 +3265,28 @@ const ir::Value &NetlistContext::add_wire(const ast::ValueSymbol &symbol)
 
 void finalize_special_nets(NetlistContext &netlist)
 {
+#ifdef SLANG_NO_YOSYS
+	for (auto symbol : netlist.special_net_symbols) {
+		for (auto bit : VariableBits(Variable::from_symbol(symbol))) {
+			ast::UnaryOperator op;
+			switch (symbol->netType.netKind) {
+			case ast::NetType::WAnd:
+			case ast::NetType::TriAnd:
+				op = ast::UnaryOperator::BitwiseAnd;
+				break;
+			case ast::NetType::WOr:
+			case ast::NetType::TriOr:
+				op = ast::UnaryOperator::BitwiseOr;
+				break;
+			default:
+				ast_unreachable(*symbol);
+			}
+			ir::Value reduced = netlist.backend->Unop(
+				op, netlist.special_net_drivers[bit], /*a_signed=*/false, /*y_width=*/1);
+			netlist.backend->connect(netlist.convert_static(bit), reduced);
+		}
+	}
+#else
 	for (auto symbol : netlist.special_net_symbols) {
 		for (auto bit : VariableBits(Variable::from_symbol(symbol))) {
 			switch (symbol->netType.netKind) {
@@ -3191,6 +3309,7 @@ void finalize_special_nets(NetlistContext &netlist)
 			}
 		}
 	}
+#endif
 }
 
 bool NetlistContext::is_blackbox(const ast::DefinitionSymbol &sym, slang::Diagnostic *why_blackbox)
@@ -3217,7 +3336,11 @@ bool NetlistContext::is_blackbox(const ast::DefinitionSymbol &sym, slang::Diagno
 			auto &note = why_blackbox->addNote(diag::NoteModuleBlackboxBecauseEmpty, sym.location);
 			note << sym.name;
 		}
+#ifndef SLANG_NO_YOSYS
 		return is_decl_empty_module(*sym.getSyntax());
+#else
+		return false;
+#endif
 	}
 
 	return false;
@@ -3421,7 +3544,9 @@ NetlistContext::NetlistContext(
 	: settings(settings), compilation(compilation), realm(instance.body), eval(*this)
 {
 	GraphBuilder::backend = std::move(backend);
+#ifndef SLANG_NO_YOSYS
 	transfer_attrs(*this, instance.body.getDefinition(), GraphBuilder::backend->canvas);
+#endif
 }
 
 NetlistContext::NetlistContext(

@@ -91,6 +91,7 @@ extern slang::DiagCode ReadmemBadBinaryDigit;
 extern slang::DiagCode NoIgnoreUnknownModules;
 extern slang::DiagCode HierarchicalRefOutsideModulesUnsupported;
 extern slang::DiagCode HighImpedanceUnsupported;
+extern slang::DiagCode IfacePortUnsupported;
 
 void setup_messages(slang::DiagnosticEngine &engine);
 }; // namespace diag

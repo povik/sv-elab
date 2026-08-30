@@ -140,9 +140,12 @@ void finalize_variable_initialization(NetlistContext &netlist)
 		}
 
 		auto variable = Variable::from_symbol(&symbol);
+#ifndef SLANG_NO_YOSYS
 		if (netlist.is_inferred_memory(*variable_symbol)) {
 			// Nothing to do
-		} else {
+		} else
+#endif
+		{
 			auto signal = netlist.convert_static(variable);
 			ir::Value cl, cr; // lhs/rhs of a new connection
 			ir::Const attr_value(ir::Sx, signal.size());

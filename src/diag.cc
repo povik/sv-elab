@@ -137,6 +137,7 @@ DiagCode ReadmemBadBinaryDigit(DiagSubsystem::Netlist, 1083);
 DiagCode NoIgnoreUnknownModules(DiagSubsystem::Netlist, 1084);
 DiagCode HierarchicalRefOutsideModulesUnsupported(DiagSubsystem::Netlist, 1085);
 DiagCode HighImpedanceUnsupported(DiagSubsystem::Netlist, 1086);
+DiagCode IfacePortUnsupported(DiagSubsystem::Netlist, 1087);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -205,6 +206,9 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(LangFeatureUnsupported, "unsupported language feature");
 	engine.setSeverity(LangFeatureUnsupported, DiagnosticSeverity::Error);
+	engine.setMessage(IfacePortUnsupported,
+			"interface port on kept module boundary is unsupported");
+	engine.setSeverity(IfacePortUnsupported, DiagnosticSeverity::Error);
 
 	engine.setMessage(UnsupportedLhs, "unsupported assignment target expression");
 	engine.setSeverity(UnsupportedLhs, DiagnosticSeverity::Error);

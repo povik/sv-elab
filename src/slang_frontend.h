@@ -23,7 +23,102 @@
 #include "slang/numeric/ConstantValue.h"
 #include "slang/text/SourceLocation.h"
 #include "slang/util/Enum.h"
+#ifndef SLANG_NO_YOSYS
 #include "kernel/rtlil.h"
+#include "kernel/log.h"
+#endif
+
+#ifdef SLANG_NO_YOSYS
+// Standalone stubs for Yosys log/assert functions, used when building the
+// frontend without Yosys (SLANG_NO_YOSYS). Mirrors the shared frontend's
+// requirements without pulling in any Yosys headers.
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+
+namespace Yosys {
+
+[[gnu::format(printf, 1, 2)]]
+inline void log(const char* fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+}
+
+inline void log_flush()
+{
+  fflush(stderr);
+}
+
+[[gnu::format(printf, 1, 2)]] [[noreturn]]
+inline void log_error(const char* fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  std::abort();
+}
+
+[[gnu::format(printf, 1, 2)]]
+inline void log_warning(const char* fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  fprintf(stderr, "Warning: ");
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+}
+
+#ifndef log_debug
+[[gnu::format(printf, 1, 2)]]
+inline void log_debug(const char*, ...)
+{
+}
+#endif
+
+inline int ys_debug(int = 0)
+{
+  return 0;
+}
+
+#define log_abort() std::fprintf(stderr, "log_abort at %s:%d\n", __FILE__, __LINE__); std::abort()
+
+// log_assert: use a macro so we get file/line info
+#ifndef log_assert
+#define log_assert(_cond_)                           \
+  do {                                               \
+    if (!(_cond_)) {                                 \
+      std::fprintf(stderr,                           \
+                   "Assertion failed: %s [%s:%d]\n", \
+                   #_cond_,                          \
+                   __FILE__,                         \
+                   __LINE__);                        \
+      std::abort();                                  \
+    }                                                \
+  } while (0)
+#endif
+
+[[gnu::format(printf, 1, 2)]]
+inline std::string stringf(const char* fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  va_list ap2;
+  va_copy(ap2, ap);
+  int n = vsnprintf(nullptr, 0, fmt, ap);
+  va_end(ap);
+  std::string result(n, '\0');
+  vsnprintf(result.data(), n + 1, fmt, ap2);
+  va_end(ap2);
+  return result;
+}
+
+}  // namespace Yosys
+
+#endif
 
 namespace slang_frontend {
 // pull in a copy of hashlib into the slang_frontend namespace
@@ -71,15 +166,20 @@ using Yosys::log;
 using Yosys::log_flush;
 using Yosys::log_error;
 using Yosys::log_warning;
-using Yosys::log_id;
-using Yosys::log_signal;
 using Yosys::ys_debug;
 #ifndef log_debug
 using Yosys::log_debug;
 #endif
+#ifndef SLANG_NO_YOSYS
+using Yosys::log_id;
+using Yosys::log_signal;
 namespace RTLIL = ::Yosys::RTLIL;
-namespace ast = ::slang::ast;
 namespace ID = ::Yosys::RTLIL::ID;
+using RTLIL::escape_id;
+#else
+// log_abort is a macro in this build
+#endif
+namespace ast = ::slang::ast;
 
 struct NetlistContext;
 class ProceduralContext;
@@ -234,7 +334,9 @@ struct ProcessTiming {
 	};
 	std::vector<Sensitivity> triggers;
 
+#ifndef SLANG_NO_YOSYS
 	void extract_trigger(NetlistContext &netlist, Yosys::Cell *cell, ir::Net enable);
+#endif
 
 	static ProcessTiming implicit;
 	static ProcessTiming initial;
@@ -266,7 +368,9 @@ public:
 	// only used when timing.kind==ProcessTiming::Initial
 	hashlib::dict<VariableBit, ir::Trit> initial_locals_state;
 
+#ifndef SLANG_NO_YOSYS
 	std::vector<RTLIL::Cell *> preceding_memwr;
+#endif
 
 private:
 	int flag_counter = 0;
@@ -291,8 +395,10 @@ public:
 	// Action priority barrier: creates a trivial empty switch/case
 	void descend_into_empty_case();
 
+#ifndef SLANG_NO_YOSYS
 	// For $check, $print cells
 	void set_effects_trigger(RTLIL::Cell *cell);
+#endif
 	void update_variable_state(slang::SourceLocation loc, VariableBits lvalue, ir::Value unmasked_rvalue, ir::Value mask, bool blocking);
 	void do_simple_assign(slang::SourceLocation loc, VariableBits lvalue, ir::Value rvalue, bool blocking);
 	ir::Value substitute_rvalue(VariableBits bits);
@@ -607,7 +713,9 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 	struct Memory {
 		int num_wr_ports = 0;
 	};
+#ifndef SLANG_NO_YOSYS
 	Yosys::dict<RTLIL::IdString, Memory> emitted_mems;
+#endif
 
 	// Used to implement modports on `realm`
 	hashlib::dict<const ast::Scope*, std::string> scopes_remap;
@@ -746,11 +854,13 @@ ir::Net matches_pattern(NetlistContext &builder, const ValuePattern &pattern, ir
 ir::Value inside_comparison(EvalContext &eval, ir::Value left, const ast::Expression &expr);
 extern std::string hierpath_relative_to(const ast::Scope *relative_to, const ast::Scope *scope);
 std::string format_src(slang::SourceRange source_range);
+#ifndef SLANG_NO_YOSYS
 void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
-void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, AttributeGuard &guard);
 void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, RTLIL::AttrObject *to);
-void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, AttributeGuard &guard);
 void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, RTLIL::AttrObject *to);
+#endif
+void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, AttributeGuard &guard);
+void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, AttributeGuard &guard);
 void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, AttributeGuard &guard);
 uint64_t bitstream_member_offset(const ast::FieldSymbol &member);
 bool is_special_net_type(const ast::NetType &type);
@@ -758,9 +868,13 @@ bool is_special_net(const ast::Symbol &symbol);
 void finalize_special_nets(NetlistContext &netlist);
 
 // blackboxes.cc
+#ifndef SLANG_NO_YOSYS
 extern void import_blackboxes_from_rtlil(slang::SourceManager &mgr, ast::Compilation &target, RTLIL::Design *source);
+#endif
 extern bool is_decl_empty_module(const slang::syntax::SyntaxNode &syntax);
+#ifndef SLANG_NO_YOSYS
 extern void export_blackbox_to_rtlil(NetlistContext &netlist, const ast::InstanceSymbol &inst, RTLIL::Design *target);
+#endif
 
 // abort_helpers.cc
 [[noreturn]] void unimplemented_(const ast::Symbol &obj, const char *file, int line, const char *condition);
