@@ -4,8 +4,6 @@
 // Copyright Martin Povišer <povik@cutebit.org>
 // Distributed under the terms of the ISC license, see LICENSE
 //
-#include "kernel/log.h"
-#include "kernel/rtlil.h"
 #include "slang/ast/Expression.h"
 #include "slang/ast/expressions/SelectExpressions.h"
 #include "slang/ast/types/Type.h"

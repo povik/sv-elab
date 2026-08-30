@@ -4,7 +4,6 @@
 // Copyright Martin Povišer <povik@cutebit.org>
 // Distributed under the terms of the ISC license, see LICENSE
 //
-#include "kernel/log.h"
 #include "slang/ast/Expression.h"
 #include "slang/ast/SemanticFacts.h"
 #include "slang/ast/Statement.h"

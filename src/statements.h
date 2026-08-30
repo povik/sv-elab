@@ -7,8 +7,6 @@
 #pragma once
 
 #include "diag.h"
-#include "kernel/log.h"
-#include "kernel/rtlil.h"
 #include <cstddef>
 #include <cstdint>
 #include <functional>

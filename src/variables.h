@@ -5,7 +5,6 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 #pragma once
-#include "kernel/log.h"
 #include "slang_frontend.h"
 #include <cinttypes>
 #include <cstddef>

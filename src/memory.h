@@ -12,7 +12,6 @@
 
 #include "async_pattern.h"
 #include "diag.h"
-#include "kernel/log.h"
 #include "slang/ast/ASTVisitor.h"
 #include "slang/ast/Compilation.h"
 #include "slang/ast/Expression.h"

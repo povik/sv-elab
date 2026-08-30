@@ -5,7 +5,6 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 
-#include "kernel/log.h"
 #include "slang/ast/Expression.h"
 #include "slang/ast/Scope.h"
 #include "slang/ast/Statement.h"
