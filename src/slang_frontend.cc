@@ -2550,18 +2550,18 @@ public:
 		}
 	}
 
-	void handle(const ast::ContinuousAssignSymbol &sym)
+	void handle(const ast::ContinuousAssignSymbol &symbol)
 	{
-		if (sym.getDelay() && !settings.ignore_timing.value_or(false))
-			netlist.add_diag(diag::GenericTimingUnsyn, sym.getDelay()->sourceRange);
+		if (symbol.getDelay() && !settings.ignore_timing.value_or(false))
+			netlist.add_diag(diag::GenericTimingUnsyn, symbol.getDelay()->sourceRange);
 
-		const ast::AssignmentExpression &expr = sym.getAssignment().as<ast::AssignmentExpression>();
+		const ast::AssignmentExpression &expr = symbol.getAssignment().as<ast::AssignmentExpression>();
 		ast_invariant(expr, !expr.timingControl);
-
-		ir::Value rvalue = netlist.eval(expr.right());
 
 		if (expr.left().kind == ast::ExpressionKind::Streaming) {
 			auto& stream_lexpr = expr.left().as<ast::StreamingConcatenationExpression>();
+
+			ir::Value rvalue = netlist.eval(expr.right());
 			VariableBits lvalue = netlist.eval.streaming_lhs(stream_lexpr);
 			ast_invariant(expr, (uint64_t)rvalue.size() >= lvalue.bitwidth());
 
@@ -2571,6 +2571,8 @@ public:
 
 		if (ast::SimpleAssignmentPatternExpression::isKind(expr.left().kind)) {
 			auto &pattern_lexpr = expr.left().as<ast::SimpleAssignmentPatternExpression>();
+
+			ir::Value rvalue = netlist.eval(expr.right());
 			ir::Value link;
 			auto els = pattern_lexpr.elements();
 			for (auto it = els.rbegin(); it != els.rend(); it++) {
@@ -2582,6 +2584,31 @@ public:
 			return;
 		}
 
+		if (ast::ConditionalExpression::isKind(expr.right().kind)) {
+			auto &ternary = expr.right().as<ast::ConditionalExpression>();
+			auto lhs_value = ternary.left().eval(netlist.eval.const_);
+			auto rhs_value = ternary.right().eval(netlist.eval.const_);
+			bool lhs_z = lhs_value.isInteger() && (lhs_value.integer().countZs() == lhs_value.integer().getBitWidth());
+			bool rhs_z = rhs_value.isInteger() && (rhs_value.integer().countZs() == rhs_value.integer().getBitWidth());
+
+			if (lhs_z || rhs_z) {
+				auto canvas = netlist.backend->canvas;
+				require(ternary, ternary.conditions.size() == 1);
+				require(ternary, !ternary.conditions[0].pattern);
+				ir::Value enable = netlist.eval(*(ternary.conditions[0].expr));
+				auto lvalue = netlist.eval.lhs(expr.left());
+				auto cell = canvas->addTribuf(netlist.backend->new_id(),
+					(lhs_z ? netlist.eval(ternary.right()) : netlist.eval(ternary.left())).raw(),
+					(lhs_z ? netlist.LogicNot(enable) : netlist.ReduceBool(enable)).raw(),
+					netlist.convert_static(lvalue)
+				);
+				netlist.register_driven(lvalue);
+				transfer_attrs(netlist, symbol, cell);
+				return;
+			}
+		}
+
+		ir::Value rvalue = netlist.eval(expr.right());
 		netlist.add_continuous_driver(netlist.eval.lhs(expr.left()), rvalue);
 	}
 
@@ -2968,10 +2995,17 @@ public:
 						in = mid_wire;
 						transfer_attrs(netlist, sym, inv_cell);
 					}
-					ir::Value a = inv_en ? in : ir::Value(RTLIL::SigSpec(RTLIL::Sz));
-					ir::Value b = inv_en ? ir::Value(RTLIL::SigSpec(RTLIL::Sz)) : in;
 					auto en = netlist.eval(*ports[2]);
-					cell = netlist.backend->canvas->addMux(id, a, b, en, y);
+					if (inv_en) {
+						auto mid_wire = netlist.add_placeholder_signal(1, id + "_en", true);
+						auto inv_cell = netlist.backend->canvas->addNot(id + "_eninv", en, mid_wire);
+						en = mid_wire;
+						transfer_attrs(netlist, sym, inv_cell);
+					}
+					cell = netlist.backend->canvas->addCell(id, ID($_TBUF_));
+					cell->setPort(ID::A, in);
+					cell->setPort(ID::E, en);
+					cell->setPort(ID::Y, y);
 				} else if (!type.compare("cmos") || !type.compare("rcmos")) {
 					// cmos (w, datain, ncontrol, pcontrol);
 					// is equivalent to:

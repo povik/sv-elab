@@ -367,8 +367,8 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setMessage(HierarchicalRefOutsideModulesUnsupported, "hierarchical reference outside module hierarchy unsupported");
 	engine.setSeverity(HierarchicalRefOutsideModulesUnsupported, DiagnosticSeverity::Error);
 
-	engine.setMessage(HighImpedanceUnsupported, "high-impedance state (Z) unsupported in this context");
-	engine.setSeverity(HighImpedanceUnsupported, DiagnosticSeverity::Error);
+	engine.setMessage(HighImpedanceUnsupported, "high-impedance state (Z) will be treated as undefined state (X) in this context");
+	engine.setSeverity(HighImpedanceUnsupported, DiagnosticSeverity::Warning);
 	// clang-format on
 }
 }; // namespace diag
