@@ -1,0 +1,11 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "hashlib",
+    srcs = ["hashlib.cc"],
+    hdrs = ["hashlib.h"],
+    copts = ["-std=c++20"],
+    includes = ["."],
+)

@@ -9,8 +9,17 @@ package(
 # Private on purpose: this is a static archive, which yosys cannot dlopen().
 # Depend on (or build) :slang.so instead.
 cc_library(
+    name = "plugin_internal_hdrs",
+    hdrs = glob(["*.h"]),
+    strip_include_prefix = ".",
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
     name = "yosys_plugin_lib",
-    srcs = ["//:plugin_srcs"],
+    srcs = [
+        "//:plugin_srcs",
+    ] + glob(["*.cc"]),
     copts = [
         "-fPIC",
         "-std=c++20",
@@ -18,6 +27,10 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        "//:plugin_hdrs",
+        "//:version_hdrs",
+        ":plugin_internal_hdrs",
+        "@vendored-hashlib//:hashlib",
         "@vendored-slang//:slang",
         "@yosys//:hdrs",
     ],

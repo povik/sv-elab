@@ -41,6 +41,8 @@ expand_template(
     template = "src/version.h.in",
 )
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # --- sv-elab yosys plugin (shared library) ---
 
 # The plugin sources live here, but the rules that consume them live in
@@ -48,9 +50,22 @@ expand_template(
 # that package. Only the loadable slang.so is a public target.
 filegroup(
     name = "plugin_srcs",
-    srcs = glob([
-        "src/*.cc",
-        "src/*.h",
-    ]) + [":version.h"],
+    srcs = glob(["src/*.cc"]),
+    visibility = ["//src/yosys_plugin:__pkg__"],
+)
+
+# Plugin headers from src/, exported under their flat names ("slang_frontend.h",
+# "diag.h", ...) so the plugin sources can keep quoting them directly.
+cc_library(
+    name = "plugin_hdrs",
+    hdrs = glob(["src/*.h"]),
+    strip_include_prefix = "src",
+    visibility = ["//src/yosys_plugin:__pkg__"],
+)
+
+cc_library(
+    name = "version_hdrs",
+    hdrs = [":version.h"],
+    strip_include_prefix = ".",
     visibility = ["//src/yosys_plugin:__pkg__"],
 )
