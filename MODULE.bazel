@@ -20,5 +20,7 @@ tomlplusplus_ext = use_extension("//:dependency_support/tomlplusplus_ext.bzl", "
 use_repo(tomlplusplus_ext, "tomlplusplus")
 vendored_hashlib_ext = use_extension("//:dependency_support/hashlib_ext.bzl", "vendored_hashlib")
 use_repo(vendored_hashlib_ext, "vendored-hashlib")
+slang_revision = use_repo_rule("//:dependency_support/slang_revision.bzl", "slang_revision")
+slang_revision(name = "slang_revision", path = "third_party/slang")
 slang_ext = use_extension("//:dependency_support/slang_ext.bzl", "vendored_slang_extension")
 use_repo(slang_ext, "vendored-slang")

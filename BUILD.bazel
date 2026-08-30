@@ -5,6 +5,7 @@ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_license//rules:license.bzl", "license")
 load(
     "//:dependency_support/slang_ext.bzl",
+    "SLANG_VERSION_HASH",
     "SLANG_VERSION_MAJOR",
     "SLANG_VERSION_MINOR",
     "SLANG_VERSION_PATCH",
@@ -39,6 +40,15 @@ expand_template(
         ),
     },
     template = "src/version.h.in",
+)
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "slang_revision_check",
+    srcs = ["dependency_support/slang_revision_check.sh"],
+    data = ["@slang_revision//:revision"],
+    env = {"EXPECTED_SLANG_REVISION": SLANG_VERSION_HASH},
 )
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")

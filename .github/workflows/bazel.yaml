@@ -12,6 +12,11 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ github.workflow }}
           repository-cache: true
+      - name: Check slang revision matches submodule
+        run: bazel test //:slang_revision_check
       - name: Build
         run: |
           bazel build //...
+      - name: Test
+        run: |
+          bazel test //...
