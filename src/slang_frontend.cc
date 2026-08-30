@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cassert>
+#include <unordered_set>
 #include <fstream>
 #include <limits>
 #include <sstream>

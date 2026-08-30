@@ -13,6 +13,7 @@
 #include <string>
 #include <utility>
 #include <optional>
+#include <set>
 #include "ir.h"
 #include "slang/ast/EvalContext.h"
 #include "slang/ast/Scope.h"
