@@ -326,7 +326,7 @@ struct SwitchHelper
 	{
 		// TODO: extend detection
 		if (compare.size() == 1 && compare[0].is_fully_def() && sw->signal.is_fully_def() &&
-				sw->signal != lower_pattern(compare[0])) {
+				sw->signal.raw() != lower_pattern(compare[0])) {
 			// dead branch
 			return;
 		}
