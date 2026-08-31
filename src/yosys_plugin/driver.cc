@@ -420,7 +420,7 @@ struct SlangFrontend : Frontend
 
 		try {
 			if (!driver.parseAllSources())
-				log_error("Parsing failed; see full log for details\n");
+				log_cmd_error("Parsing failed; see full log for details\n");
 
 			auto compilation = driver.createCompilation();
 
@@ -447,7 +447,7 @@ struct SlangFrontend : Frontend
 				// PopulateNetlist requires a well-formed AST without error nodes
 				(void)driver.reportDiagnostics(/* quiet */ false);
 				if (!in_succesful_failtest)
-					log_error("Design elaboration failed; see full log for details\n");
+					log_cmd_error("Design elaboration failed; see full log for details\n");
 				return;
 			}
 
@@ -504,7 +504,7 @@ struct SlangFrontend : Frontend
 
 			if (!driver.reportDiagnostics(/* quiet */ false)) {
 				if (!in_succesful_failtest)
-					log_error("Design elaboration failed; see full log for details\n");
+					log_cmd_error("Design elaboration failed; see full log for details\n");
 				return;
 			}
 		} catch (const std::exception &e) {
