@@ -115,7 +115,7 @@ ir::Value GraphBuilder::Bwmux(ir::Value a, ir::Value b, ir::Value s)
 	log_assert(a.size() == s.size());
 	if (s.is_fully_const()) {
 		ir::Value result(ir::Sx, a.size());
-		for (int i = 0; i < a.size(); i++) {
+		for (uint64_t i = 0; i < a.size(); i++) {
 			if (s[i] == ir::S0)
 				result[i] = a[i];
 			else if (s[i] == ir::S1)
@@ -133,9 +133,10 @@ ir::Value GraphBuilder::Shift(ir::Value a, ir::Value b, bool b_signed, uint64_t 
 		log_assert(!a.empty());
 		int shift_amount = b.as_int(b_signed);
 		ir::Value ret;
-		int i, j;
+		int i;
+		uint64_t j;
 		for (i = shift_amount, j = 0; j < result_width; i++, j++) {
-			if (i >= a.size() || i < 0)
+			if (i >= (int)a.size() || i < 0)
 				ret.append(ir::S0);
 			else
 				ret.append(a[i]);
@@ -152,9 +153,10 @@ ir::Value GraphBuilder::Shiftx(ir::Value a, ir::Value b, bool b_signed, uint64_t
 		log_assert(!a.empty());
 		int shift_amount = b.as_int(b_signed);
 		ir::Value ret;
-		int i, j;
+		int i;
+		uint64_t j;
 		for (i = shift_amount, j = 0; j < result_width; i++, j++) {
-			if (i >= a.size() || i < 0)
+			if (i >= (int)a.size() || i < 0)
 				ret.append(ir::Sx);
 			else
 				ret.append(a[i]);
@@ -173,7 +175,7 @@ ir::Value GraphBuilder::Neg(ir::Value a, bool signed_)
 ir::Value GraphBuilder::Bmux(ir::Value a, ir::Value s)
 {
 	log_assert(a.size() % (1 << s.size()) == 0);
-	log_assert(a.size() >= 1 << s.size());
+	log_assert(a.size() >= 1ULL << s.size());
 	int stride = a.size() >> s.size();
 	if (s.is_fully_def() && s.width() < 32) {
 		return a.extract(s.as_const().as_int() * stride, stride);
@@ -263,11 +265,11 @@ ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, b
 		int al = 0, bl = 0;
 		// Add +1 to avoid overflows
 		log_assert(a_signed == b_signed);
-		int width = std::max(a.size(), b.size()) + 1;
+		uint64_t width = std::max(a.size(), b.size()) + 1;
 
 		bool seen_undef_bit = false;
 
-		for (int i = 0; i < width; i++) {
+		for (uint64_t i = 0; i < width; i++) {
 			ir::Net abit = i < a.size() ? ir::Net(a[i]) : (a_signed ? a.msb() : ir::Net(ir::S0));
 			ir::Net bbit = i < b.size() ? ir::Net(b[i]) : (b_signed ? b.msb() : ir::Net(ir::S0));
 
@@ -332,7 +334,7 @@ ir::Value GraphBuilder::Unop(ast::UnaryOperator op, ir::Value a, bool a_signed, 
 	return backend->Unop(op, a, a_signed, y_width);
 }
 
-ir::Value GraphBuilder::CountOnes(ir::Value sig, int result_width)
+ir::Value GraphBuilder::CountOnes(ir::Value sig, uint64_t result_width)
 {
 	ir::Value ret;
 	auto width = sig.size();
@@ -344,7 +346,7 @@ ir::Value GraphBuilder::CountOnes(ir::Value sig, int result_width)
 	} else {
 		// Build tree of adders
 		std::vector<ir::Value> curr_level;
-		for (int i = 0; i < width; i++) {
+		for (uint64_t i = 0; i < width; i++) {
 			ir::Value bit = ir::Net(sig[i]);
 			bit.extend_u0(result_width);
 			curr_level.push_back(bit);
@@ -371,7 +373,7 @@ ir::Value GraphBuilder::CountOnes(ir::Value sig, int result_width)
 	return ret;
 }
 
-ir::Value GraphBuilder::Clog2(ir::Value sig, int result_width)
+ir::Value GraphBuilder::Clog2(ir::Value sig, uint64_t result_width)
 {
 	int width = sig.size();
 

@@ -149,7 +149,7 @@ void finalize_variable_initialization(NetlistContext &netlist)
 			auto signal = netlist.convert_static(variable);
 			ir::Value cl, cr; // lhs/rhs of a new connection
 			ir::Const attr_value(ir::Sx, signal.size());
-			for (int i = 0; i < signal.size(); i++) {
+			for (uint64_t i = 0; i < signal.size(); i++) {
 				VariableBit vbit(variable, i);
 				bool register_driven = netlist.register_driven_variables.count(vbit);
 				bool driven = netlist.driven_variables.count(vbit);
