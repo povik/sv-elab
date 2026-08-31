@@ -103,7 +103,7 @@ ir::Value BackendGraphBuilder::Shiftx(
 ir::Value BackendGraphBuilder::Bmux(ir::Value a, ir::Value s)
 {
 	log_assert(a.size() % (1 << s.size()) == 0);
-	log_assert(a.size() >= 1 << s.size());
+	log_assert(a.size() >= 1ULL << s.size());
 	int stride = a.size() >> s.size();
 	auto [id, y] = add_y_wire(stride);
 	bless_cell(canvas->addBmux(id, a, s, y));
@@ -382,7 +382,7 @@ void BackendGraphBuilder::emit_meminit_cell(
 	int abits = 32; // TODO: error out if abits too low
 	int nwords = data.size() / mem->width;
 	log_assert(data.size() % mem->width == 0);
-	log_assert(mask.size() == mem->width);
+	log_assert(mask.size() == (uint64_t)mem->width);
 	RTLIL::Cell *cell = canvas->addCell(new_id(), ID($meminit_v2));
 	cell->setParam(ID::MEMID, mem->name.str());
 	cell->setParam(ID::PRIORITY, meminit_prio_counter++);
@@ -416,7 +416,7 @@ void BackendGraphBuilder::add_memory_init(
 	// Depending on the offset alignment with respect to word boundaries
 	// we might need to emit up to 3 instances of the `$meminit_v2` cell.
 	if (bit_offset % mem->width != 0) {
-		int offset_in_cell = bit_offset % mem->width;
+		uint64_t offset_in_cell = bit_offset % mem->width;
 		uint64_t length = std::min(mem->width - offset_in_cell, data.size());
 		Const data1, mask1;
 		data1.append(Const(Sx, offset_in_cell));
@@ -439,7 +439,7 @@ void BackendGraphBuilder::add_memory_init(
 
 	if (processed < data.size()) {
 		uint64_t length = data.size() - processed;
-		log_assert(length < mem->width);
+		log_assert(length < uint64_t(mem->width));
 		Const data1, mask1;
 		data1.append(data.extract(0, length));
 		data1.append(Const(Sx, mem->width - length));

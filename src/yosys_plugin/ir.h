@@ -58,7 +58,7 @@ public:
 
 	RTLIL::Const &raw_rtlil() { return raw_; }
 
-	int size() const { return raw_.size(); }
+	uint64_t size() const { return raw_.size(); }
 	bool empty() const { return raw_.empty(); }
 
 	Const extract(int offset, int length) const { return raw_.extract(offset, length); }

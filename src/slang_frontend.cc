@@ -424,7 +424,7 @@ ir::Net matches_pattern(NetlistContext &netlist, const ValuePattern &pattern, ir
 	ir::Value sig, filtered_pat;
 	sig.reserve(value.width());
 	filtered_pat.reserve(value.width());
-	for (int i = 0; i < pattern.size(); i++) {
+	for (uint64_t i = 0; i < pattern.size(); i++) {
 		if (pattern.bits[i].is_wildcard())
 			continue;
 		sig.append(value[i]);
@@ -762,7 +762,7 @@ ir::Value EvalContext::apply_conversion(const ast::ConversionExpression &conv, i
 	const ast::Type &from = conv.operand().type->getCanonicalType();
 	const ast::Type &to = conv.type->getCanonicalType();
 
-	log_assert(op.size() == (int) from.getBitstreamWidth());
+	log_assert(op.size() == from.getBitstreamWidth());
 
 	if (from.isIntegral() && to.isIntegral()) {
 		bool sign_extend = (conv.conversionKind == ast::ConversionKind::Propagated)
@@ -1416,7 +1416,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 				ir::Value stream = streaming(stream_expr);
 
 				// pad to fit target size
-				ast_invariant(conv, stream.size() <= (int) expr.type->getBitstreamWidth());
+				ast_invariant(conv, stream.size() <= expr.type->getBitstreamWidth());
 				ret = {stream, ir::Value(ir::S0, expr.type->getBitstreamWidth() - stream.size())};
 			}
 		}

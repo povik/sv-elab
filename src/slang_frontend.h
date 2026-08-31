@@ -582,8 +582,8 @@ struct GraphBuilder {
 	ir::Value Unop(ast::UnaryOperator op, ir::Value a, bool a_signed, uint64_t y_width);
 	ir::Value Biop(ast::BinaryOperator op, ir::Value a, ir::Value b,
 				 bool a_signed, bool b_signed, uint64_t y_width);
-	ir::Value CountOnes(ir::Value sig, int result_width);
-	ir::Value Clog2(ir::Value sig, int result_width);
+	ir::Value CountOnes(ir::Value sig, uint64_t result_width);
+	ir::Value Clog2(ir::Value sig, uint64_t result_width);
 
 	void add_input(std::string_view name, ir::Value signal);
 	void add_output(std::string_view name, ir::Value signal);
@@ -807,11 +807,11 @@ struct ValuePattern
 	ValuePattern(ir::Value v)
 	{
 		bits.reserve(v.size());
-		for (int i = 0; i < v.size(); i++)
+		for (uint64_t i = 0; i < v.size(); i++)
 			bits.push_back(PatternBit(v[i]));
 	}
 
-	int size() const { return (int)bits.size(); }
+	uint64_t size() const { return bits.size(); }
 	bool empty() const { return bits.empty(); }
 
 	bool is_fully_concrete() const
@@ -913,7 +913,7 @@ public:
 	bool is_static();
 
 	slang::ConstantRange range;
-	int64_t stride = 1;
+	uint64_t stride = 1;
 private:
 	void interpret_index(ir::Value signal, int64_t width_down = 1, int64_t width_up = 1);
 
@@ -921,7 +921,7 @@ private:
 	ir::Value shift_down_bitwise(ir::Value val, uint64_t output_len);
 	ir::Value raw_demux(ir::Value val, int64_t from, int64_t to);
 	ir::Value raw_mux(ir::Value val, int64_t from, int64_t to, uint64_t stride);
-	ir::Value embed(ir::Value val, uint64_t output_len, int64_t stride, ir::Trit padding);
+	ir::Value embed(ir::Value val, uint64_t output_len, uint64_t stride, ir::Trit padding);
 
 	// these summed together are the zero-based index of the bottom item
 	// of the selection

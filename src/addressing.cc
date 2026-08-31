@@ -259,7 +259,7 @@ ir::Value AddressingResolver::raw_demux(ir::Value val, int64_t from, int64_t to)
 
 ir::Value AddressingResolver::demux(ir::Value val, uint64_t output_len)
 {
-	log_assert(val.size() == (uint64_t)stride);
+	log_assert(val.size() == stride);
 	log_assert(output_len % stride == 0);
 	ir::Value demuxed = raw_demux(val, -std::max<int64_t>(0, base_offset),
 			std::max<int64_t>(0, ((int64_t)output_len / stride) - base_offset));
@@ -269,7 +269,7 @@ ir::Value AddressingResolver::demux(ir::Value val, uint64_t output_len)
 
 ir::Value AddressingResolver::raw_mux(ir::Value val, int64_t from, int64_t to, uint64_t stride)
 {
-	log_assert(stride * (to - from) == (int)val.size());
+	log_assert(stride * (to - from) == val.size());
 	ir::Value negative(ir::Sx, stride), positive(ir::Sx, stride);
 
 	if (from < 0) {
@@ -345,10 +345,10 @@ ir::Value AddressingResolver::shift_down(ir::Value val, uint64_t output_len)
 		ir::Value ret(ir::Sx, output_len);
 		std::vector<bool> written(output_len, false);
 
-		for (int64_t i = 0; i < stride; i++) {
+		for (uint64_t i = 0; i < stride; i++) {
 			ir::Value fin, fout;
 
-			for (int64_t j = i; j < val.width(); j += stride)
+			for (uint64_t j = i; j < val.width(); j += stride)
 				fin.append(val[j]);
 
 			fout = shift_down_bitwise(fin, ((int64_t)output_len - i + stride - 1) / stride);
@@ -366,7 +366,7 @@ ir::Value AddressingResolver::shift_down(ir::Value val, uint64_t output_len)
 }
 
 ir::Value AddressingResolver::embed(
-		ir::Value val, uint64_t output_len, int64_t stride, ir::Trit padding)
+		ir::Value val, uint64_t output_len, uint64_t stride, ir::Trit padding)
 {
 	ast_invariant(expr, raw_signal.is_fully_def());
 	int64_t offset = raw_signal.as_const().as_int(true) + base_offset;
