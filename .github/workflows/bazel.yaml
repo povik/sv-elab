@@ -20,3 +20,31 @@ jobs:
       - name: Test
         run: |
           bazel test //...
+
+  bazel-gcc11:
+    name: Bazel GCC 11
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-11
+      CXX: g++-11
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Install GCC 11
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-11 g++-11
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-gcc11
+          repository-cache: true
+      - name: Check slang revision
+        run: bazel test //:slang_revision_check
+      - name: Build
+        run: |
+          bazel build //...
+      - name: Test
+        run: |
+          bazel test //...
