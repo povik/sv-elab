@@ -911,8 +911,6 @@ int str_to_state_vect(std::vector<ir::Trit> &data, const char *str, uint64_t mem
 }
 
 // clang-format on
-extern const slang::SourceManager *global_sourcemgr;
-
 void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 {
 	NetlistContext &netlist = context.netlist;
@@ -941,7 +939,8 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 	if (f.fail()) {
 		slang::SourceLocation loc = call.sourceRange.start();
 		slang::BufferID buf_id = loc.buffer();
-		std::filesystem::path file_path = global_sourcemgr->getFullPath(buf_id);
+		auto *source_mgr = context.netlist.compilation.getSourceManager();
+		std::filesystem::path file_path = source_mgr->getFullPath(buf_id);
 		std::string parent_path = file_path.parent_path().string();
 
 		if (!parent_path.empty() &&

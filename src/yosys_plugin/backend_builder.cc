@@ -49,7 +49,7 @@ void BackendGraphBuilder::bless_cell(RTLIL::Cell *cell)
 {
 	cell->attributes = staged_attributes;
 	if (staged_source_range_valid && !cell->attributes.count(ID::src)) {
-		auto src = format_src(staged_source_range);
+		auto src = format_src(source_mgr, staged_source_range);
 		if (!src.empty())
 			cell->attributes[ID::src] = src;
 	}
@@ -471,6 +471,7 @@ std::unique_ptr<BackendGraphBuilder> BackendGraphBuilder::start_new_graph(
 		std::string_view graph_name)
 {
 	auto backend2 = std::make_unique<BackendGraphBuilder>();
+	backend2->source_mgr = source_mgr;
 	backend2->canvas = canvas->design->addModule(RTLIL::escape_id(std::string(graph_name)));
 	return backend2;
 }

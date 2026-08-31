@@ -12,6 +12,7 @@ namespace slang_frontend {
 
 struct BackendGraphBuilder : BackendGraphBuilderBase
 {
+	const slang::SourceManager *source_mgr;
 	RTLIL::Module *canvas = nullptr;
 	Yosys::dict<RTLIL::IdString, RTLIL::Const> staged_attributes;
 	// Source ranges are kept unformatted until bless_cell() actually emits a
