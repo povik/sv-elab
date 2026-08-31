@@ -3613,6 +3613,12 @@ void catch_forbidden_options(slang::driver::Driver &driver) {
 		}
 	}
 
+	if (driver.options.compilationFlags[ast::CompilationFlags::LintMode]) {
+		slang::Diagnostic diag(diag::OptionRequiresStandaloneSlang, slang::SourceLocation::NoLocation);
+		diag << "--lint-only"sv;
+		engine.issue(diag);
+	}
+
 	if (driver.options.compilationFlags[ast::CompilationFlags::IgnoreUnknownModules]) {
 		engine.issue({diag::NoIgnoreUnknownModules, slang::SourceLocation::NoLocation});
 	}
