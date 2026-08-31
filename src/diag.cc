@@ -138,6 +138,7 @@ DiagCode NoIgnoreUnknownModules(DiagSubsystem::Netlist, 1084);
 DiagCode HierarchicalRefOutsideModulesUnsupported(DiagSubsystem::Netlist, 1085);
 DiagCode HighImpedanceUnsupported(DiagSubsystem::Netlist, 1086);
 DiagCode IfacePortUnsupported(DiagSubsystem::Netlist, 1087);
+DiagCode OptionRequiresStandaloneSlang(DiagSubsystem::Netlist, 1088);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -369,6 +370,9 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(HighImpedanceUnsupported, "high-impedance state (Z) will be treated as undefined state (X) in this context");
 	engine.setSeverity(HighImpedanceUnsupported, DiagnosticSeverity::Warning);
+
+	engine.setMessage(OptionRequiresStandaloneSlang, "option '{}' unsupported; please use standalone slang instead");
+	engine.setSeverity(OptionRequiresStandaloneSlang, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag
