@@ -470,6 +470,7 @@ struct SlangFrontend : Frontend
 
 				auto backend = std::make_unique<BackendGraphBuilder>();
 				backend->canvas = design->addModule(RTLIL::escape_id(module_type_id(*ref_body)));
+				backend->source_mgr = compilation->getSourceManager();
 				auto [netlist, new_] = hqueue.get_or_emplace(ref_body, std::move(backend), settings,
 						*compilation, *ref_body->parentInstance);
 				log_assert(new_);
@@ -710,6 +711,7 @@ struct TestSlangExprPass : Pass
 		auto *source_mgr = compilation->getSourceManager();
 		auto backend = std::make_unique<BackendGraphBuilder>();
 		backend->canvas = d->addModule("\\top");
+		backend->source_mgr = source_mgr;
 		NetlistContext netlist(std::move(backend), settings, *compilation, *top);
 		add_internal_symbols(netlist, top->body);
 
