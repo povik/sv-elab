@@ -24,8 +24,6 @@
 #include "slang/text/SourceLocation.h"
 #include "slang_frontend.h"
 
-extern slang::ast::Compilation *global_compilation;
-
 namespace slang_frontend {
 
 struct InferredMemoryDetector : public TimingPatternInterpretor,

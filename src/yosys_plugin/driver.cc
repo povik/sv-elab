@@ -28,8 +28,8 @@ namespace slang_frontend {
 
 namespace syntax = slang::syntax;
 
-ast::Compilation *global_compilation;
-const slang::SourceManager *global_sourcemgr;
+// Global to pass compilation to abort_helpers.cc
+slang::ast::Compilation *global_compilation;
 
 slang::SourceRange source_location(const ast::Symbol &obj)
 {
@@ -48,10 +48,8 @@ slang::SourceRange source_location(const ast::TimingControl &stmt)
 	return stmt.sourceRange;
 }
 
-std::string format_src(slang::SourceRange sr)
+std::string format_src(const slang::SourceManager *sm, slang::SourceRange sr)
 {
-	auto sm = global_sourcemgr;
-
 	if (!sm->isFileLoc(sr.start()) || !sm->isFileLoc(sr.end()))
 		return "";
 
@@ -68,9 +66,9 @@ std::string format_src(slang::SourceRange sr)
 	}
 }
 
-template <typename T> std::string format_src(const T &obj)
+template <typename T> std::string format_src(const slang::SourceManager *sm, const T &obj)
 {
-	return format_src(source_location(obj));
+	return format_src(sm, source_location(obj));
 }
 
 static const RTLIL::IdString rtlil_id(const std::string_view &view)
@@ -165,11 +163,11 @@ std::optional<RTLIL::Const> convert_attr_value(
 
 template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTLIL::AttrObject *to)
 {
-	auto src = format_src(from);
+	auto src = format_src(netlist.compilation.getSourceManager(), from);
 	if (!src.empty())
 		to->attributes[ID::src] = src;
 
-	for (auto attr : global_compilation->getAttributes(from)) {
+	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
 			to->attributes[rtlil_id(attr->name)] = *value;
 		}
@@ -179,7 +177,7 @@ template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, Att
 {
 	guard.set_source(source_location(from));
 
-	for (auto attr : global_compilation->getAttributes(from)) {
+	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
 			guard.set(rtlil_id(attr->name), *value);
 		}
@@ -458,9 +456,7 @@ struct SlangFrontend : Frontend
 				return;
 			}
 
-			global_compilation = &(*compilation);
-			global_sourcemgr = compilation->getSourceManager();
-
+			global_compilation = &*compilation;
 			HierarchyQueue hqueue;
 			for (auto instance : compilation->getRoot().topInstances) {
 				if (instance->getDefinition().definitionKind == ast::DefinitionKind::Program) {
@@ -710,9 +706,8 @@ struct TestSlangExprPass : Pass
 			return;
 		}
 
-		global_compilation = &(*compilation);
-		global_sourcemgr = compilation->getSourceManager();
-
+		global_compilation = &*compilation;
+		auto *source_mgr = compilation->getSourceManager();
 		auto backend = std::make_unique<BackendGraphBuilder>();
 		backend->canvas = d->addModule("\\top");
 		NetlistContext netlist(std::move(backend), settings, *compilation, *top);
@@ -739,17 +734,19 @@ struct TestSlangExprPass : Pass
 
 					slang::SourceRange sr = expr->sourceRange;
 					std::string_view text =
-							global_sourcemgr->getSourceText(sr.start().buffer())
+							source_mgr->getSourceText(sr.start().buffer())
 									.substr(sr.start().offset(),
 											sr.end().offset() - sr.start().offset());
 
 					if (ref == test) {
-						log_debug("%s: %s (ref) == %s (test) # %s\n", format_src(*expr).c_str(),
-								log_signal(ref), log_signal(test), std::string(text).c_str());
+						log_debug("%s: %s (ref) == %s (test) # %s\n",
+								format_src(source_mgr, *expr).c_str(), log_signal(ref),
+								log_signal(test), std::string(text).c_str());
 						ntests++;
 					} else {
-						log("%s: %s (ref) == %s (test) # %s\n", format_src(*expr).c_str(),
-								log_signal(ref), log_signal(test), std::string(text).c_str());
+						log("%s: %s (ref) == %s (test) # %s\n",
+								format_src(source_mgr, *expr).c_str(), log_signal(ref),
+								log_signal(test), std::string(text).c_str());
 						ntests++;
 						nfailures++;
 					}
