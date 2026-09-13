@@ -3449,6 +3449,29 @@ bool NetlistContext::should_dissolve(const ast::InstanceSymbol &sym, slang::Diag
 	}
 }
 
+// clang-format on
+std::vector<const ast::InstanceSymbol *> NetlistContext::collect_nondissolved_instances()
+{
+	std::vector<const ast::InstanceSymbol *> instances;
+
+	realm.visit(ast::makeVisitor(
+			[&](auto &visitor, const ast::InstanceSymbol &sym) {
+				if (should_dissolve(sym))
+					visitor.visitDefault(sym);
+				else
+					instances.push_back(&sym);
+			},
+			[&](auto &visitor, const ast::GenerateBlockSymbol &sym) {
+				/* stop at uninstantiated generate blocks */
+				if (sym.isUninstantiated)
+					return;
+				visitor.visitDefault(sym);
+			}));
+
+	return instances;
+}
+// clang-format off
+
 const ast::InstanceBodySymbol *NetlistContext::find_symbol_realm(const ast::Symbol &symbol)
 {
 	const ast::Scope *scope = symbol.getParentScope();

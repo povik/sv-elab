@@ -760,6 +760,7 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 
 	bool is_blackbox(const ast::DefinitionSymbol &sym, slang::Diagnostic *why_blackbox=nullptr);
 	bool should_dissolve(const ast::InstanceSymbol &sym, slang::Diagnostic *why_not_dissolved=nullptr);
+	std::vector<const ast::InstanceSymbol *> collect_nondissolved_instances();;
 
 	// Find the "realm" for the given symbol, i.e. the containing instance body
 	// which is not getting dissolved during netlist emission. If we are fully flattening
