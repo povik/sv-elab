@@ -790,10 +790,41 @@ ir::Value EvalContext::apply_nested_conversion(const ast::Expression &expr, ir::
 	}
 }
 
-ir::Value handle_past(EvalContext &eval, const ast::CallExpression &call)
+// Returns false (having already emitted a diagnostic) if `call` is not being
+// evaluated inside a procedural block with a single, explicit clock edge
+static bool require_single_clock_context(EvalContext &eval, const ast::CallExpression &call)
 {
 	NetlistContext &netlist = eval.netlist;
 	ProceduralContext *procedural = eval.procedural;
+
+	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit
+			|| procedural->timing.triggers.size() != 1 || !procedural->timing_matches_process) {
+		netlist.add_diag(diag::SystemFunctionRequireClockedBlock, call.sourceRange) << call.getSubroutineName();
+		return false;
+	}
+	return true;
+}
+
+static ir::Value delay_by_one_cycle(EvalContext &eval, ir::Value value, std::string_view name_hint)
+{
+	NetlistContext &netlist = eval.netlist;
+	ProceduralContext *procedural = eval.procedural;
+	auto &trigger = procedural->timing.triggers[0];
+
+	ir::Value delayed = netlist.add_placeholder_signal(value.size(), name_hint);
+	netlist.add_dffe(netlist.backend->new_id("past"),
+		trigger.signal,
+		procedural->timing.background_enable,
+		value,
+		delayed,
+		trigger.edge_polarity,
+		true);
+	return delayed;
+}
+
+ir::Value handle_past(EvalContext &eval, const ast::CallExpression &call)
+{
+	NetlistContext &netlist = eval.netlist;
 
 	// $past(expr) - returns the value of expr from the previous clock cycle
 	// $past(expr, num_cycles) - returns the value from num_cycles ago
@@ -802,11 +833,8 @@ ir::Value handle_past(EvalContext &eval, const ast::CallExpression &call)
 		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange);
 		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
 	}
-	if (procedural == nullptr || procedural->timing.kind == ProcessTiming::Implicit
-			|| procedural->timing.triggers.size() != 1 || !procedural->timing_matches_process) {
-		netlist.add_diag(diag::SystemFunctionRequireClockedBlock, call.sourceRange) << call.getSubroutineName();
+	if (!require_single_clock_context(eval, call))
 		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
-	}
 
 	// Check num_cycles if specified (2nd argument)
 	int num_cycles = 1;
@@ -819,28 +847,46 @@ ir::Value handle_past(EvalContext &eval, const ast::CallExpression &call)
 
 	auto arg = call.arguments()[0];
 	ir::Value current_val = eval(*arg);
-	int width = current_val.size();
-
-	// Use the first trigger (clock) from the procedural timing
-	auto &trigger = procedural->timing.triggers[0];
 
 	// Create a chain of DFFs for num_cycles delay
 	ir::Value prev_val = current_val;
-	ir::Value past_wire;
+	for (int i = 0; i < num_cycles; i++)
+		prev_val = delay_by_one_cycle(eval, prev_val, "$past");
 
-	for (int i = 0; i < num_cycles; i++) {
-		past_wire = netlist.add_placeholder_signal(width, "$past");
-		netlist.add_dffe(netlist.backend->new_id("past"),
-			trigger.signal,
-			procedural->timing.background_enable,
-			prev_val,
-			past_wire,
-			trigger.edge_polarity,
-			true);
-		prev_val = past_wire;
+	return prev_val;
+}
+
+enum class SampledValueFunc { Rose, Fell, Stable, Changed };
+
+// IEEE 1800-2017 16.9.3 $rose and $fell look only at the LSB while $stable and $changed compare the whole value.
+ir::Value handle_sampled_value_func(EvalContext &eval, const ast::CallExpression &call, SampledValueFunc kind)
+{
+	NetlistContext &netlist = eval.netlist;
+
+	// We don't support the optional clocking_event (2nd) argument
+	if (call.arguments().size() > 1) {
+		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange) << call.getSubroutineName();
+		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
 	}
+	if (!require_single_clock_context(eval, call))
+		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
 
-	return past_wire;
+	auto arg = call.arguments()[0];
+	ir::Value current_val = eval(*arg);
+	ir::Value past_val = delay_by_one_cycle(eval, current_val, "$past");
+
+	switch (kind) {
+	case SampledValueFunc::Stable:
+		return netlist.Eq(current_val, past_val);
+	case SampledValueFunc::Changed:
+		return netlist.LogicNot(netlist.Eq(current_val, past_val));
+    case SampledValueFunc::Rose:
+		return netlist.LogicAnd(netlist.LogicNot(ir::Net(past_val[0])), ir::Net(current_val[0]));
+	case SampledValueFunc::Fell:
+		return netlist.LogicAnd(ir::Net(past_val[0]), netlist.LogicNot(ir::Net(current_val[0])));
+	default:
+		log_abort();
+	}
 }
 
 static const ir::Const reverse_data(ir::Const &orig, int width)
@@ -1567,6 +1613,14 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 					ret = netlist.Clog2(sig, (int)call.type->getBitstreamWidth());
 				} else if (name == "$past") {
 					ret = handle_past(*this, call);
+				} else if (name == "$rose") {
+					ret = handle_sampled_value_func(*this, call, SampledValueFunc::Rose);
+				} else if (name == "$fell") {
+					ret = handle_sampled_value_func(*this, call, SampledValueFunc::Fell);
+				} else if (name == "$stable") {
+					ret = handle_sampled_value_func(*this, call, SampledValueFunc::Stable);
+				} else if (name == "$changed") {
+					ret = handle_sampled_value_func(*this, call, SampledValueFunc::Changed);
 				} else if (name == "$signed" || name == "$unsigned") {
 					require(expr, call.arguments().size() == 1);
 					ret = (*this)(*call.arguments()[0]);
