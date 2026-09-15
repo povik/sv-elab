@@ -190,3 +190,92 @@ async2sync
 miter -equiv -make_assert -flatten dff_past02_gold dff_past02_gate dff_past02_miter
 hierarchy -top dff_past02_miter
 sat -seq 20 -set-init-zero -prove-asserts -verify dff_past02_miter
+
+design -reset
+read_slang <<EOF
+module dff_rose01_gate(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= $rose(d);
+	end
+endmodule
+EOF
+
+read_slang <<EOF
+module dff_rose01_gold(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= d && !$past(d);
+	end
+endmodule
+EOF
+
+async2sync
+miter -equiv -make_assert -flatten dff_rose01_gold dff_rose01_gate dff_rose01_miter
+hierarchy -top dff_rose01_miter
+sat -seq 20 -set-init-zero -prove-asserts -verify dff_rose01_miter
+
+design -reset
+read_slang <<EOF
+module dff_fell01_gate(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= $fell(d);
+	end
+endmodule
+EOF
+
+read_slang <<EOF
+module dff_fell01_gold(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= !d && $past(d);
+	end
+endmodule
+EOF
+
+async2sync
+miter -equiv -make_assert -flatten dff_fell01_gold dff_fell01_gate dff_fell01_miter
+hierarchy -top dff_fell01_miter
+sat -seq 20 -set-init-zero -prove-asserts -verify dff_fell01_miter
+
+design -reset
+read_slang <<EOF
+module dff_stable01_gate(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= $stable(d);
+	end
+endmodule
+EOF
+
+read_slang <<EOF
+module dff_stable01_gold(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= (d == $past(d));
+	end
+endmodule
+EOF
+
+async2sync
+miter -equiv -make_assert -flatten dff_stable01_gold dff_stable01_gate dff_stable01_miter
+hierarchy -top dff_stable01_miter
+sat -seq 20 -set-init-zero -prove-asserts -verify dff_stable01_miter
+
+design -reset
+read_slang <<EOF
+module dff_changed01_gate(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= $changed(d);
+	end
+endmodule
+EOF
+
+read_slang <<EOF
+module dff_changed01_gold(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= (d != $past(d));
+	end
+endmodule
+EOF
+
+async2sync
+miter -equiv -make_assert -flatten dff_changed01_gold dff_changed01_gate dff_changed01_miter
+hierarchy -top dff_changed01_miter
+sat -seq 20 -set-init-zero -prove-asserts -verify dff_changed01_miter
+
