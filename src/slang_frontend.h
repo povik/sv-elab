@@ -532,14 +532,29 @@ struct BackendGraphBuilderBase {
 
 	// Instantiate a blackbox cell with named port connections.
 	struct PortConnection {
-		std::string name;
+		std::string_view name;
 		enum Direction { kInput, kOutput, kInOut } direction;
 		ir::Value value;
 	};
+
+	struct ParameterValue {
+		std::string name;
+		ir::Const value;
+
+		// Indicates the expression setting this parameter is implicitly
+		// convertible to string; some databases (at least Yosys) use this
+		// to set a special flag on the constant
+		bool implicit_string;
+	};
+
 	virtual void add_instance(std::string_view cell_type,
 	                          std::vector<PortConnection> ports) {
 		(void)cell_type; (void)ports;
 	}
+
+	virtual void instantiate_blackbox(std::string_view cell_type, std::string_view name,
+									  std::span<PortConnection> port_connections,
+									  std::span<ParameterValue> param_values) = 0;
 
 	virtual void add_dual_edge_aldff(const std::string &base_name, ir::Net clk,
 							 		 ir::Net aload, const ir::Value &d, const ir::Value &q,

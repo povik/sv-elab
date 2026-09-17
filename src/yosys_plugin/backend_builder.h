@@ -52,6 +52,11 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 	void add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en, const ir::Net aload,
 			const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool clk_polarity = true,
 			bool en_polarity = true, bool aload_polarity = true) override;
+
+	void instantiate_blackbox(std::string_view cell_type, std::string_view name,
+			std::span<PortConnection> port_connections,
+			std::span<ParameterValue> param_values) override;
+
 	std::unique_ptr<BackendGraphBuilder> start_new_graph(std::string_view graph_name);
 	void finalize();
 

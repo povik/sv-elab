@@ -365,6 +365,26 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 	bless_cell(cell);
 }
 
+void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::string_view name,
+		std::span<PortConnection> port_connections, std::span<ParameterValue> param_values)
+{
+	RTLIL::Cell *cell = canvas->addCell(name, RTLIL::escape_id(std::string(cell_type)));
+
+	for (auto &conn : port_connections) {
+		cell->setPort(RTLIL::escape_id(std::string(conn.name)), conn.value);
+	}
+
+	for (auto &param : param_values) {
+		auto const_rtlil = param.value.to_rtlil();
+		if (param.implicit_string) {
+			const_rtlil.flags |= RTLIL::CONST_FLAG_STRING;
+		}
+		cell->setParam(RTLIL::escape_id(param.name), const_rtlil);
+	}
+
+	bless_cell(cell);
+}
+
 static const RTLIL::Const reverse_data(RTLIL::Const &orig, int width)
 {
 	std::vector<RTLIL::State> bits;

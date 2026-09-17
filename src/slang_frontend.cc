@@ -2245,54 +2245,11 @@ public:
 			return;
 		}
 
-#ifdef SLANG_NO_YOSYS
-		if (sym.isModule() && netlist.is_blackbox(sym.body.getDefinition())) {
-			std::vector<BackendGraphBuilderBase::PortConnection> ports;
-
-			for (auto *conn : sym.getPortConnections()) {
-				if (!conn->getExpression())
-					continue;
-				auto &expr = *conn->getExpression();
-
-				if (conn->port.kind != ast::SymbolKind::Port)
-					continue;
-
-				auto &port = conn->port.as<ast::PortSymbol>();
-				BackendGraphBuilderBase::PortConnection::Direction dir;
-				ir::Value sig;
-
-				switch (port.direction) {
-				case ast::ArgumentDirection::In:
-					dir = BackendGraphBuilderBase::PortConnection::kInput;
-					sig = netlist.eval(expr);
-					break;
-				case ast::ArgumentDirection::Out: {
-					dir = BackendGraphBuilderBase::PortConnection::kOutput;
-					ast_invariant(expr, ast::AssignmentExpression::isKind(expr.kind));
-					auto &assign = expr.as<ast::AssignmentExpression>();
-					sig = netlist.eval.connection_lhs(assign);
-					break;
-				}
-				case ast::ArgumentDirection::InOut:
-					dir = BackendGraphBuilderBase::PortConnection::kInOut;
-					sig = netlist.eval(expr);
-					break;
-				default:
-					continue;
-				}
-
-				ports.push_back({std::string(port.name), dir, sig});
-			}
-
-			netlist.add_instance(std::string(sym.body.name), std::move(ports));
-			return;
-		}
-#else
+//clang format-on
 		// blackboxes get special handling no matter the hierarchy mode
 		if (sym.isModule() && netlist.is_blackbox(sym.body.getDefinition())) {
-			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), RTLIL::escape_id(std::string(sym.body.name)));
-			cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
-
+			// Build the port list first
+			std::vector<BackendGraphBuilderBase::PortConnection> ports;
 			for (auto *conn : sym.getPortConnections()) {
 				slang::SourceLocation loc;
 				if (auto expr = conn->getExpression())
@@ -2317,11 +2274,17 @@ public:
 					case ast::ArgumentDirection::Out: {
 						ast_invariant(expr, ast::AssignmentExpression::isKind(expr.kind));
 						auto &assign = expr.as<ast::AssignmentExpression>();
-						cell->setPort(rtlil_id(conn->port.name), netlist.eval.connection_lhs(assign));
+						ports.push_back(BackendGraphBuilderBase::PortConnection{conn->port.name, 
+							port.direction == ast::ArgumentDirection::InOut ?
+								BackendGraphBuilderBase::PortConnection::kInOut :
+								BackendGraphBuilderBase::PortConnection::kOutput,
+						 netlist.eval.connection_lhs(assign)});
 						break;
 					}
 					case ast::ArgumentDirection::In: {
-						cell->setPort(rtlil_id(conn->port.name), netlist.eval(expr));
+						ports.push_back(BackendGraphBuilderBase::PortConnection{conn->port.name, 
+							BackendGraphBuilderBase::PortConnection::kInput,
+							netlist.eval(expr)});
 						break;
 					}
 					case ast::ArgumentDirection::Ref: {
@@ -2336,25 +2299,38 @@ public:
 				}
 			}
 
+			// Then build parameter list
+			std::vector<BackendGraphBuilderBase::ParameterValue> params;
 			sym.body.visit(ast::makeVisitor([&](auto&, const ast::ParameterSymbol &symbol) {
 				auto converted = netlist.convert_const(symbol.getValue(), symbol.location);
 				if (converted) {
-					if (symbol.isImplicitString(slang::SourceRange(sym.location, sym.location))
-							&& converted->size() % 8 == 0) {
-						converted->raw_rtlil().flags |= RTLIL::CONST_FLAG_STRING;
-					}
-					cell->setParam(RTLIL::escape_id(std::string(symbol.name)), converted->to_rtlil());
+					params.push_back({
+						std::string(symbol.name),
+						*converted,
+						symbol.isImplicitString(slang::SourceRange(sym.location, sym.location))
+					});
 				}
 			}, [&](auto&, const ast::TypeParameterSymbol &symbol) {
 				netlist.add_diag(diag::BboxTypeParameter, symbol.location);
 			}, [&](auto&, const ast::InstanceSymbol&) {
 				// no-op
 			}));
-			transfer_attrs(netlist, sym, cell);
+
+			{
+				AttributeGuard guard(netlist);
+#ifndef SLANG_NO_YOSYS
+				guard.set(ID::hdlname, netlist.hdlname(sym));
+#endif
+				transfer_attrs(netlist, sym, guard);
+				netlist.backend->instantiate_blackbox(std::string(sym.body.name), netlist.id(sym), ports, params);
+			}
+
+#ifndef SLANG_NO_YOSYS
 			export_blackbox_to_rtlil(netlist, sym, netlist.backend->canvas->design);
+#endif
 			return;
 		}
-#endif
+//clang format-off
 
 		if (netlist.should_dissolve(sym)) {
 			sym.body.visit(*this);
