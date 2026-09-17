@@ -429,22 +429,22 @@ void GraphBuilder::add_instance(
 	backend->add_instance(cell_type, std::move(ports));
 }
 
-void GraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::Value clk, ir::Value aload,
-		ir::Value d, ir::Value q, ir::Value ad, bool aload_polarity)
+void GraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::Net clk, ir::Net aload,
+		const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool aload_polarity)
 {
 	backend->add_dual_edge_aldff(base_name, clk, aload, d, q, ad, aload_polarity);
 }
 
-void GraphBuilder::add_dff(std::string_view name, const ir::Value &clk, const ir::Value &d,
+void GraphBuilder::add_dff(std::string_view name, const ir::Net clk, const ir::Value &d,
 		const ir::Value &q, bool clk_polarity)
 {
 	backend->add_dff(name, clk, d, q, clk_polarity);
 }
 
-void GraphBuilder::add_dffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
+void GraphBuilder::add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
 		const ir::Value &d, const ir::Value &q, bool clk_polarity, bool en_polarity)
 {
-	if (en.is_fully_def() && en.as_bool() == en_polarity) {
+	if (en == ir::Net(en_polarity ? ir::S1 : ir::S0)) {
 		backend->add_dff(name, clk, d, q, clk_polarity);
 		return;
 	}
@@ -452,18 +452,18 @@ void GraphBuilder::add_dffe(std::string_view name, const ir::Value &clk, const i
 	backend->add_dffe(name, clk, en, d, q, clk_polarity, en_polarity);
 }
 
-void GraphBuilder::add_aldff(std::string_view name, const ir::Value &clk, const ir::Value &aload,
+void GraphBuilder::add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
 		const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool clk_polarity,
 		bool aload_polarity)
 {
 	backend->add_aldff(name, clk, aload, d, q, ad, clk_polarity, aload_polarity);
 }
 
-void GraphBuilder::add_aldffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
-		const ir::Value &aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
+void GraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en,
+		const ir::Net aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 		bool clk_polarity, bool en_polarity, bool aload_polarity)
 {
-	if (en.is_fully_def() && en.as_bool() == en_polarity) {
+	if (en == ir::Net(en_polarity ? ir::S1 : ir::S0)) {
 		return add_aldff(name, clk, aload, d, q, ad, clk_polarity, aload_polarity);
 	}
 

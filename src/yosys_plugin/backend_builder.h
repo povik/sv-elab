@@ -23,35 +23,35 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 	unsigned next_id = 0;
 	std::string new_id(std::string base = std::string());
 
-	ir::Value Unop(ast::UnaryOperator op, ir::Value a, bool a_signed, uint64_t y_width);
+	ir::Value Unop(ast::UnaryOperator op, ir::Value a, bool a_signed, uint64_t y_width) override;
 	ir::Value Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, bool a_signed, bool b_signed,
-			uint64_t y_width);
-	ir::Value Demux(ir::Value a, ir::Value s);
-	ir::Value Bwmux(ir::Value a, ir::Value b, ir::Value s);
-	ir::Value Bmux(ir::Value a, ir::Value s);
-	ir::Value Shift(ir::Value a, ir::Value s, bool s_signed, uint64_t result_width);
-	ir::Value Shiftx(ir::Value a, ir::Value s, bool s_signed, uint64_t result_width);
-	ir::Value Mux(ir::Value a, ir::Value b, ir::Net s);
+			uint64_t y_width) override;
+	ir::Value Demux(ir::Value a, ir::Value s) override;
+	ir::Value Bwmux(ir::Value a, ir::Value b, ir::Value s) override;
+	ir::Value Bmux(ir::Value a, ir::Value s) override;
+	ir::Value Shift(ir::Value a, ir::Value s, bool s_signed, uint64_t result_width) override;
+	ir::Value Shiftx(ir::Value a, ir::Value s, bool s_signed, uint64_t result_width) override;
+	ir::Value Mux(ir::Value a, ir::Value b, ir::Net s) override;
 
-	ir::Value add_placeholder_signal(
-			uint64_t width, std::string_view name_suggestion = ""sv, bool public_name = false);
-	void connect(ir::Value target, ir::Value source);
-	void set_initialization(ir::Value signal, ir::Const init_value);
+	ir::Value add_placeholder_signal(uint64_t width, std::string_view name_suggestion = ""sv,
+			bool public_name = false) override;
+	void connect(ir::Value target, ir::Value source) override;
+	void set_initialization(ir::Value signal, ir::Const init_value) override;
 	void add_memory_init(
-			std::string_view name, uint64_t bit_offset, bool big_endian, ir::Const data);
-	void add_dual_edge_aldff(const std::string &base_name, ir::Value clk, ir::Value aload,
-			ir::Value d, ir::Value q, ir::Value ad, bool aload_polarity);
-	void add_dff(std::string_view name, const ir::Value &clk, const ir::Value &d,
-			const ir::Value &q, bool clk_polarity = true);
-	void add_dffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
-			const ir::Value &d, const ir::Value &q, bool clk_polarity = true,
-			bool en_polarity = true);
-	void add_aldff(std::string_view name, const ir::Value &clk, const ir::Value &aload,
+			std::string_view name, uint64_t bit_offset, bool big_endian, ir::Const data) override;
+	void add_dual_edge_aldff(const std::string &base_name, ir::Net clk, ir::Net aload,
+			const ir::Value &d, const ir::Value &q, const ir::Value &ad,
+			bool aload_polarity) override;
+	void add_dff(std::string_view name, const ir::Net clk, const ir::Value &d, const ir::Value &q,
+			bool clk_polarity = true) override;
+	void add_dffe(std::string_view name, const ir::Net clk, const ir::Net en, const ir::Value &d,
+			const ir::Value &q, bool clk_polarity = true, bool en_polarity = true) override;
+	void add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
 			const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool clk_polarity = true,
-			bool aload_polarity = true);
-	void add_aldffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
-			const ir::Value &aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
-			bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true);
+			bool aload_polarity = true) override;
+	void add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en, const ir::Net aload,
+			const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool clk_polarity = true,
+			bool en_polarity = true, bool aload_polarity = true) override;
 	std::unique_ptr<BackendGraphBuilder> start_new_graph(std::string_view graph_name);
 	void finalize();
 

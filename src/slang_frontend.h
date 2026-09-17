@@ -541,19 +541,19 @@ struct BackendGraphBuilderBase {
 		(void)cell_type; (void)ports;
 	}
 
-	virtual void add_dual_edge_aldff(const std::string &base_name, ir::Value clk,
-							 		 ir::Value aload, ir::Value d, ir::Value q,
-							 		 ir::Value ad, bool aload_polarity) = 0;
-	virtual void add_dff(std::string_view name, const ir::Value &clk, const ir::Value &d,
+	virtual void add_dual_edge_aldff(const std::string &base_name, ir::Net clk,
+							 		 ir::Net aload, const ir::Value &d, const ir::Value &q,
+							 		 const ir::Value &ad, bool aload_polarity) = 0;
+	virtual void add_dff(std::string_view name, const ir::Net clk, const ir::Value &d,
 		 		 const ir::Value &q, bool clk_polarity=true) = 0;
-	virtual void add_dffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
+	virtual void add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
 		 		  const ir::Value &d, const ir::Value &q, bool clk_polarity=true,
 				  bool en_polarity=true) = 0;
-	virtual void add_aldff(std::string_view name, const ir::Value &clk, const ir::Value &aload,
+	virtual void add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
 		   		   const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 				   bool clk_polarity = true, bool aload_polarity = true) = 0;
-	virtual void add_aldffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
-				   const ir::Value &aload,
+	virtual void add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en,
+				   const ir::Net aload,
 				   const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 				   bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true) = 0;
 };
@@ -588,19 +588,19 @@ struct GraphBuilder {
 	void add_input(std::string_view name, ir::Value signal);
 	void add_output(std::string_view name, ir::Value signal);
 	void add_instance(std::string_view cell_type, std::vector<BackendGraphBuilderBase::PortConnection> ports);
-	void add_dual_edge_aldff(const std::string &base_name, ir::Value clk,
-							 ir::Value aload, ir::Value d, ir::Value q,
-							 ir::Value ad, bool aload_polarity);
-	void add_dff(std::string_view name, const ir::Value &clk, const ir::Value &d,
+	void add_dual_edge_aldff(const std::string &base_name, ir::Net clk,
+							 ir::Net aload, const ir::Value &d, const ir::Value &q,
+							 const ir::Value &ad, bool aload_polarity);
+	void add_dff(std::string_view name, const ir::Net clk, const ir::Value &d,
 				 const ir::Value &q, bool clk_polarity=true);
-	void add_dffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
+	void add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
 				 const ir::Value &d, const ir::Value &q, bool clk_polarity=true,
 				 bool en_polarity=true);
-	void add_aldff(std::string_view name, const ir::Value &clk, const ir::Value &aload,
+	void add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
 				   const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 				   bool clk_polarity = true, bool aload_polarity = true);
-	void add_aldffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
-				   const ir::Value &aload,
+	void add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en,
+				   const ir::Net aload,
 				   const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 				   bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true);
 

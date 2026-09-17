@@ -288,8 +288,9 @@ void BackendGraphBuilder::set_initialization(ir::Value signal, ir::Const init_va
 
 // Synthesizes two single-edge FFs (one posedge, one negedge) with the same D input,
 // then uses a mux controlled by the clock to select the appropriate FF output.
-void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::Value clk,
-		ir::Value aload, ir::Value d, ir::Value q, ir::Value ad, bool aload_polarity)
+void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::Net clk,
+		ir::Net aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
+		bool aload_polarity)
 {
 	RTLIL::Wire *pos_q = canvas->addWire(
 			canvas->uniquify(Yosys::stringf("%s$pos$q", base_name.c_str())), d.size());
@@ -297,27 +298,27 @@ void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::
 	RTLIL::Wire *neg_q = canvas->addWire(
 			canvas->uniquify(Yosys::stringf("%s$neg$q", base_name.c_str())), d.size());
 
-	if (aload.is_fully_def() && aload.size() == 1 && aload.as_bool() != aload_polarity) {
+	if (aload == (aload_polarity ? ir::S0 : ir::S1)) {
 		RTLIL::Cell *pos_ff =
-				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())), clk,
-						d, pos_q, /*edge_polarity=*/true);
+				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
+						RTLIL::SigBit(clk), d, pos_q, /*edge_polarity=*/true);
 		bless_cell(pos_ff);
 
 		// Create negedge FF
 		RTLIL::Cell *neg_ff =
-				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())), clk,
-						d, neg_q, /*edge_polarity=*/false);
+				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())),
+						RTLIL::SigBit(clk), d, neg_q, /*edge_polarity=*/false);
 		bless_cell(neg_ff);
 	} else {
 		RTLIL::Cell *pos_ff =
-				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())), clk,
-						aload, d, pos_q, ad,
+				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
+						RTLIL::SigBit(clk), RTLIL::SigBit(aload), d, pos_q, ad,
 						/*clk_polarity=*/true, aload_polarity);
 		bless_cell(pos_ff);
 
 		RTLIL::Cell *neg_ff =
-				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())), clk,
-						aload, d, neg_q, ad,
+				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())),
+						RTLIL::SigBit(clk), RTLIL::SigBit(aload), d, neg_q, ad,
 						/*clk_polarity=*/false, aload_polarity);
 		bless_cell(neg_ff);
 	}
@@ -325,40 +326,42 @@ void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::
 	// behaviour: when clk=0: select neg_q (captures on negedge), when clk=1: select pos_q (captures
 	// on posedge)
 	RTLIL::Cell *mux = canvas->addMux(canvas->uniquify(Yosys::stringf("%s$mux", base_name.c_str())),
-			/*A=*/neg_q, /*B=*/pos_q, /*S=*/clk, /*Y=*/q);
+			/*A=*/neg_q, /*B=*/pos_q, /*S=*/RTLIL::SigBit(clk), /*Y=*/q);
 	bless_cell(mux);
 }
 
-void BackendGraphBuilder::add_dff(std::string_view name, const ir::Value &clk, const ir::Value &d,
+void BackendGraphBuilder::add_dff(std::string_view name, const ir::Net clk, const ir::Value &d,
 		const ir::Value &q, bool clk_polarity)
 {
-	RTLIL::Cell *cell = canvas->addDff(canvas->uniquify(id(name)), clk, d, q, clk_polarity);
+	RTLIL::Cell *cell =
+			canvas->addDff(canvas->uniquify(id(name)), RTLIL::SigBit(clk), d, q, clk_polarity);
 	bless_cell(cell);
 }
 
-void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Value &clk, const ir::Value &en,
+void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
 		const ir::Value &d, const ir::Value &q, bool clk_polarity, bool en_polarity)
 {
+	RTLIL::Cell *cell = canvas->addDffe(canvas->uniquify(id(name)), RTLIL::SigBit(clk),
+			RTLIL::SigBit(en), d, q, clk_polarity, en_polarity);
+	bless_cell(cell);
+}
+
+void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
+		const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool clk_polarity,
+		bool aload_polarity)
+{
+	RTLIL::Cell *cell = canvas->addAldff(canvas->uniquify(id(name)), RTLIL::SigBit(clk),
+			RTLIL::SigBit(aload), d, q, ad, clk_polarity, aload_polarity);
+	bless_cell(cell);
+}
+
+void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en,
+		const ir::Net aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
+		bool clk_polarity, bool en_polarity, bool aload_polarity)
+{
 	RTLIL::Cell *cell =
-			canvas->addDffe(canvas->uniquify(id(name)), clk, en, d, q, clk_polarity, en_polarity);
-	bless_cell(cell);
-}
-
-void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Value &clk,
-		const ir::Value &aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
-		bool clk_polarity, bool aload_polarity)
-{
-	RTLIL::Cell *cell = canvas->addAldff(
-			canvas->uniquify(id(name)), clk, aload, d, q, ad, clk_polarity, aload_polarity);
-	bless_cell(cell);
-}
-
-void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Value &clk,
-		const ir::Value &en, const ir::Value &aload, const ir::Value &d, const ir::Value &q,
-		const ir::Value &ad, bool clk_polarity, bool en_polarity, bool aload_polarity)
-{
-	RTLIL::Cell *cell = canvas->addAldffe(canvas->uniquify(id(name)), clk, en, aload, d, q, ad,
-			clk_polarity, en_polarity, aload_polarity);
+			canvas->addAldffe(canvas->uniquify(id(name)), RTLIL::SigBit(clk), RTLIL::SigBit(en),
+					RTLIL::SigBit(aload), d, q, ad, clk_polarity, en_polarity, aload_polarity);
 	bless_cell(cell);
 }
 
