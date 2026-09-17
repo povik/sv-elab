@@ -76,9 +76,8 @@ struct SwitchHelper
 	SwitchHelper &operator=(const SwitchHelper &) = delete;
 	SwitchHelper(SwitchHelper &&other)
 		: context(other.context), vstate(other.vstate), dispatch(std::move(other.dispatch)),
-		  current_case_info(std::move(other.current_case_info)),
-		  original_enabled(other.original_enabled), masked_enabled(other.masked_enabled),
-		  finished(other.finished)
+		  current_case_info(std::move(other.current_case_info)), finished(other.finished),
+		  original_enabled(other.original_enabled), masked_enabled(other.masked_enabled)
 	{
 		branch_updates.swap(other.branch_updates);
 		std::swap(save_snap, other.save_snap);
@@ -136,14 +135,14 @@ struct SwitchHelper
 
 	bool detect_full_case()
 	{
-		int full_width = dispatch.size();
-		int width = full_width;
+		uint64_t full_width = dispatch.size();
+		uint64_t width = full_width;
 		while (width > 0 && dispatch[width - 1] == ir::S0)
 			width--;
 		if (width == 0 || width > 16)
 			return false;
 
-		int total = 1 << width;
+		uint64_t total = 1 << width;
 		std::vector<bool> covered(total, false);
 		for (auto &[case1, target, updates] : branch_updates) {
 			if (case1.compare.empty()) {
@@ -154,7 +153,7 @@ struct SwitchHelper
 						continue;
 
 					bool skip_pattern = false;
-					for (int i = width; i < pat.size(); i++) {
+					for (uint64_t i = width; i < pat.size(); i++) {
 						if (pat.bits[i] != PatternBit(ir::S0)) {
 							skip_pattern = true;
 							break;
@@ -166,7 +165,7 @@ struct SwitchHelper
 					uint64_t base = 0;
 					uint64_t dc_mask = 0;
 
-					for (int i = 0; i < width; i++) {
+					for (uint64_t i = 0; i < width; i++) {
 						auto bit = pat.bits[i];
 						if (bit.is_wildcard()) {
 							dc_mask |= ((uint64_t)1) << i;
@@ -190,7 +189,7 @@ struct SwitchHelper
 			}
 		}
 
-		for (int i = 0; i < total; i++)
+		for (uint64_t i = 0; i < total; i++)
 			if (!covered[i])
 				return false;
 
@@ -217,7 +216,7 @@ struct SwitchHelper
 		ir::Value background;
 		for (auto chunk : updated_anybranch.chunks()) {
 			if (chunk.variable.kind != Variable::Static && eos_variables.count(chunk.variable)) {
-				for (int i = 0; i < chunk.bitwidth(); i++)
+				for (uint64_t i = 0; i < chunk.bitwidth(); i++)
 					log_assert(!va.count(chunk[i]));
 				background.append(ir::Value(ir::Sx, chunk.bitwidth()));
 				continue;
@@ -238,7 +237,7 @@ struct SwitchHelper
 				}
 
 				ir::Value chunk_updated;
-				for (int i = 0; i < chunk.bitwidth(); i++) {
+				for (uint64_t i = 0; i < chunk.bitwidth(); i++) {
 					auto lb = std::lower_bound(target.begin(), target.end(), chunk[i]);
 					bool exists = (lb != target.end() && *lb == chunk[i]);
 					if (exists)
