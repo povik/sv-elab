@@ -72,7 +72,7 @@ template <typename T> std::string format_src(const slang::SourceManager *sm, con
 	return format_src(sm, source_location(obj));
 }
 
-static const RTLIL::IdString rtlil_id(const std::string_view &view)
+static std::string rtlil_id(const std::string_view &view)
 {
 	return RTLIL::escape_id(std::string(view));
 }
@@ -170,7 +170,7 @@ template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTL
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			to->attributes[rtlil_id(attr->name)] = *value;
+			to->attributes[netlist.backend->canvas->twines().add(rtlil_id(attr->name))] = *value;
 		}
 	}
 }
@@ -180,7 +180,7 @@ template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, Att
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			guard.set(rtlil_id(attr->name), *value);
+			guard.set(netlist.backend->canvas->twines().add(rtlil_id(attr->name)), *value);
 		}
 	}
 }

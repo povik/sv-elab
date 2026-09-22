@@ -183,7 +183,7 @@ namespace parsing = slang::parsing;
 namespace slang_frontend {
 
 #ifndef SLANG_NO_YOSYS
-static const RTLIL::IdString rtlil_id(const std::string_view &view)
+static std::string rtlil_id(const std::string_view &view)
 {
 	return RTLIL::escape_id(std::string(view));
 }
@@ -2506,7 +2506,7 @@ public:
 							ast_invariant(port, parent->asSymbol().kind == ast::SymbolKind::Modport);
 							const ast::ModportSymbol &modport = parent->asSymbol().as<ast::ModportSymbol>();
 
-							RTLIL::IdString port_name = modport_prefix \
+							std::string port_name = modport_prefix \
 							 	+ hierpath_relative_to(&static_cast<const ast::Scope&>(modport), port.getParentScope()) \
 							 	+ std::string(".") + std::string(port.name);
 

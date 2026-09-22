@@ -452,7 +452,7 @@ public:
 		}
 
 #ifndef SLANG_NO_YOSYS
-		RTLIL::IdString cell_name;
+		std::string cell_name;
 
 		if (containing_block &&
 				unwrap_statement(containing_block->tryGetStatement()) == &statement &&
@@ -463,7 +463,7 @@ public:
 			cell_name = netlist.backend->new_id();
 		}
 
-		auto cell = netlist.backend->canvas->addCell(cell_name, ID($check));
+		auto cell = netlist.backend->canvas->addCell(std::move(cell_name), ID($check));
 
 		context.set_effects_trigger(cell);
 		cell->setParam(ID::FLAVOR, flavor);

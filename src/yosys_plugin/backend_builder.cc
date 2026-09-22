@@ -16,20 +16,7 @@
 namespace slang_frontend {
 
 using RTLIL::Cell;
-using RTLIL::IdString;
-
-// A compat util to be removed once we drop 0.59 support
-#if YOSYS_MAJOR == 0 && YOSYS_MINOR < 59
-static IdString id(std::string_view sv)
-{
-	return std::string(sv);
-}
-#else
-static IdString id(std::string_view sv)
-{
-	return sv;
-}
-#endif
+using Yosys::IdString;
 
 std::string BackendGraphBuilder::new_id(std::string base)
 {
@@ -65,7 +52,7 @@ ir::Value BackendGraphBuilder::Demux(ir::Value a, ir::Value s)
 ir::Value BackendGraphBuilder::Mux(ir::Value a, ir::Value b, ir::Net s)
 {
 	auto [id, y] = add_y_wire(a.size());
-	bless_object(canvas->addMux(id, a, b, {s}, y));
+	bless_object(canvas->addMux(id, a, b, ir::Value(s), y));
 	return y;
 }
 
@@ -334,14 +321,14 @@ void BackendGraphBuilder::add_dff(std::string_view name, const ir::Net clk, cons
 		const ir::Value &q, bool clk_polarity)
 {
 	RTLIL::Cell *cell =
-			canvas->addDff(canvas->uniquify(id(name)), RTLIL::SigBit(clk), d, q, clk_polarity);
+			canvas->addDff(canvas->uniquify(std::string(name)), RTLIL::SigBit(clk), d, q, clk_polarity);
 	bless_object(cell);
 }
 
 void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
 		const ir::Value &d, const ir::Value &q, bool clk_polarity, bool en_polarity)
 {
-	RTLIL::Cell *cell = canvas->addDffe(canvas->uniquify(id(name)), RTLIL::SigBit(clk),
+	RTLIL::Cell *cell = canvas->addDffe(canvas->uniquify(std::string(name)), RTLIL::SigBit(clk),
 			RTLIL::SigBit(en), d, q, clk_polarity, en_polarity);
 	bless_object(cell);
 }
@@ -350,7 +337,7 @@ void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Net clk, co
 		const ir::Value &d, const ir::Value &q, const ir::Value &ad, bool clk_polarity,
 		bool aload_polarity)
 {
-	RTLIL::Cell *cell = canvas->addAldff(canvas->uniquify(id(name)), RTLIL::SigBit(clk),
+	RTLIL::Cell *cell = canvas->addAldff(canvas->uniquify(std::string(name)), RTLIL::SigBit(clk),
 			RTLIL::SigBit(aload), d, q, ad, clk_polarity, aload_polarity);
 	bless_object(cell);
 }
@@ -360,7 +347,7 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 		bool clk_polarity, bool en_polarity, bool aload_polarity)
 {
 	RTLIL::Cell *cell =
-			canvas->addAldffe(canvas->uniquify(id(name)), RTLIL::SigBit(clk), RTLIL::SigBit(en),
+			canvas->addAldffe(canvas->uniquify(std::string(name)), RTLIL::SigBit(clk), RTLIL::SigBit(en),
 					RTLIL::SigBit(aload), d, q, ad, clk_polarity, en_polarity, aload_polarity);
 	bless_object(cell);
 }
@@ -368,7 +355,7 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::string_view name,
 		std::span<PortConnection> port_connections, std::span<ParameterValue> param_values)
 {
-	RTLIL::Cell *cell = canvas->addCell(name, RTLIL::escape_id(std::string(cell_type)));
+	RTLIL::Cell *cell = canvas->addCell(std::string(name), canvas->twines().add(RTLIL::escape_id(std::string(cell_type))));
 
 	for (auto &conn : port_connections) {
 		cell->setPort(RTLIL::escape_id(std::string(conn.name)), conn.value);
@@ -397,12 +384,10 @@ public:
 ir::Memory *BackendGraphBuilder::add_memory(
 		std::string_view name, uint64_t width, slang::ConstantRange range)
 {
-	RTLIL::Memory *memory = new RTLIL::Memory;
-	memory->name = name;
+	RTLIL::Memory *memory = canvas->addMemory(std::string(name));
 	memory->width = width;
 	memory->start_offset = range.lower();
 	memory->size = range.width();
-	canvas->memories[memory->name] = memory;
 	bless_object(memory);
 
 	memories.push_back(std::make_unique<BackendMemory>(memory));
@@ -573,13 +558,13 @@ ir::Value BackendGraphBuilder::add_placeholder_signal(
 		uint64_t width, std::string_view name_suggestion, bool public_name)
 {
 	log_assert(width <= (uint64_t)std::numeric_limits<int>::max());
-	RTLIL::IdString name;
+	std::string name;
 	if (public_name) {
-		name = id(name_suggestion);
+		name = std::string(name_suggestion);
 	} else {
 		name = new_id(std::string(name_suggestion));
 	}
-	RTLIL::Wire *wire = canvas->addWire(name, (int)width);
+	RTLIL::Wire *wire = canvas->addWire(std::move(name), (int)width);
 	bless_object(wire);
 	return wire;
 }

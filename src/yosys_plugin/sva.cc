@@ -73,7 +73,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 	default:                                netlist.add_diag(diag::AssertionUnsupported, statement.sourceRange); return;
 	}
 
-	RTLIL::IdString cell_name;
+	std::string cell_name;
 
 	if (block && unwrap_statement(block->tryGetStatement()) == &statement && !block->name.empty()) {
 		// If we are the sole statement in a block, use the block's label
@@ -84,7 +84,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 
 	ir::Net a = netlist.ReduceBool(procedural.eval.sva(simple_assertion.expr));
 
-	auto cell = netlist.backend->canvas->addCell(cell_name, ID($check));
+	auto cell = netlist.backend->canvas->addCell(std::move(cell_name), ID($check));
 	procedural.set_effects_trigger(cell);
 	cell->setParam(ID::FLAVOR, flavor);
 	cell->setParam(ID::FORMAT, std::string(""));

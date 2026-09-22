@@ -85,8 +85,9 @@ using Yosys::ys_debug;
 #ifndef log_debug
 using Yosys::log_debug;
 #endif
+using Yosys::ID;
+using Yosys::IdString;
 namespace RTLIL = ::Yosys::RTLIL;
-namespace ID = ::Yosys::RTLIL::ID;
 using RTLIL::escape_id;
 
 #else // SLANG_NO_YOSYS
