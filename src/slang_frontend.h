@@ -85,9 +85,32 @@ using Yosys::ys_debug;
 #ifndef log_debug
 using Yosys::log_debug;
 #endif
-namespace RTLIL = ::Yosys::RTLIL;
+#if __has_include("kernel/twine.h")
+#define YOSYS_TWINES 1
+#else
+#define YOSYS_TWINES 0
+#endif
+
+#if YOSYS_TWINES
+using Yosys::ID;
+#else
 namespace ID = ::Yosys::RTLIL::ID;
+#endif
+using Yosys::IdString;
+namespace RTLIL = ::Yosys::RTLIL;
 using RTLIL::escape_id;
+
+#if YOSYS_TWINES
+template <typename T> IdString intern_id(T *owner, std::string_view name)
+{
+	return owner->twines().add(name);
+}
+#else
+template <typename T> IdString intern_id(T *, std::string_view name)
+{
+	return std::string(name);
+}
+#endif
 
 #else // SLANG_NO_YOSYS
 

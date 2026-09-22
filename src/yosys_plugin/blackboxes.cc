@@ -189,7 +189,7 @@ void export_blackbox_to_rtlil(
 	using namespace slang::ast;
 	using namespace slang::syntax;
 
-	RTLIL::IdString name = RTLIL::escape_id(std::string{inst.body.name});
+	std::string name = RTLIL::escape_id(std::string{inst.body.name});
 
 	if (target->module(name)) {
 		// Module already exists on the RLTIL side -- nothing to do
@@ -302,7 +302,7 @@ void export_blackbox_to_rtlil(
 				wire->port_id = mod->ports.size();
 			},
 			[&](auto &, const ast::ParameterSymbol &param) {
-				mod->avail_parameters(RTLIL::escape_id(std::string{param.name}));
+				mod->avail_parameters(intern_id(mod, RTLIL::escape_id(std::string{param.name})));
 			},
 			[&](auto &, const ast::InstanceSymbol &) {}));
 }
