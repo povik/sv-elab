@@ -107,7 +107,6 @@ DiagCode NoteModuleBlackboxBecauseAttribute(DiagSubsystem::Netlist, 1051);
 DiagCode NoteModuleBlackboxBecauseEmpty(DiagSubsystem::Netlist, 1052);
 DiagCode NoteModuleNotDissolvedBecauseBlackbox(DiagSubsystem::Netlist, 1053);
 DiagCode NoteModuleNotDissolvedBecauseKeepHierarchy(DiagSubsystem::Netlist, 1054);
-DiagCode NoteModuleNotDissolvedBecauseInOut(DiagSubsystem::Netlist, 1084);
 DiagCode BlockingAssignmentAfterNonblocking(DiagSubsystem::Netlist, 1055);
 DiagCode NonblockingAssignmentAfterBlocking(DiagSubsystem::Netlist, 1056);
 DiagCode NotePreviousAssignment(DiagSubsystem::Netlist, 1057);
@@ -139,6 +138,7 @@ DiagCode HierarchicalRefOutsideModulesUnsupported(DiagSubsystem::Netlist, 1085);
 DiagCode HighImpedanceUnsupported(DiagSubsystem::Netlist, 1086);
 DiagCode IfacePortUnsupported(DiagSubsystem::Netlist, 1087);
 DiagCode OptionRequiresStandaloneSlang(DiagSubsystem::Netlist, 1088);
+DiagCode NoteModuleNotDissolvedBecauseInOut(DiagSubsystem::Netlist, 1089);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
