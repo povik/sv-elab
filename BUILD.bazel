@@ -53,29 +53,35 @@ sh_test(
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
-# --- sv-elab yosys plugin (shared library) ---
-
-# The plugin sources live here, but the rules that consume them live in
-# //src/yosys_plugin, so that the intermediate cc_library can be private to
-# that package. Only the loadable slang.so is a public target.
-filegroup(
-    name = "plugin_srcs",
-    srcs = glob(["src/*.cc"]),
-    visibility = ["//src/yosys_plugin:__pkg__"],
-)
-
-# Plugin headers from src/, exported under their flat names ("slang_frontend.h",
-# "diag.h", ...) so the plugin sources can keep quoting them directly.
-cc_library(
-    name = "plugin_hdrs",
-    hdrs = glob(["src/*.h"]),
-    strip_include_prefix = "src",
-    visibility = ["//src/yosys_plugin:__pkg__"],
-)
-
 cc_library(
     name = "version_hdrs",
     hdrs = [":version.h"],
     strip_include_prefix = ".",
     visibility = ["//src/yosys_plugin:__pkg__"],
+)
+
+# hashlib ships inside sv-elab at third_party/hashlib (single-file library
+# used by the slang frontend).  Build it directly here: the vendored-hashlib
+# module extension resolves its `path` against the *main* repo root, which is
+# wrong when sv-elab is itself vendored (e.g. under rarach/third_party/sv-elab).
+# Defining the target inside sv-elab's own package keeps both the paths and
+# the @sv-elab//:hashlib_lib reference working in that setup.
+cc_library(
+    name = "hashlib_lib",
+    srcs = ["third_party/hashlib/hashlib.cc"],
+    hdrs = ["third_party/hashlib/hashlib.h"],
+    includes = ["third_party/hashlib"],
+    copts = ["-std=c++20"],
+)
+
+filegroup(
+    name = "common_srcs",
+    srcs = glob(["src/*.cc", "src/*.h"]),
+)
+
+cc_library(
+    name = "frontend_hdrs",
+    hdrs = glob(["src/*.h"]),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
 )

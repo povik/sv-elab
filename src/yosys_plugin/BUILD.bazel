@@ -18,7 +18,7 @@ cc_library(
 cc_library(
     name = "yosys_plugin_lib",
     srcs = [
-        "//:plugin_srcs",
+        "//:common_srcs",
     ] + glob(["*.cc"]),
     copts = [
         "-fPIC",
@@ -27,7 +27,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
-        "//:plugin_hdrs",
+        "//:frontend_hdrs",
         "//:version_hdrs",
         ":plugin_internal_hdrs",
         "@vendored-hashlib//:hashlib",
