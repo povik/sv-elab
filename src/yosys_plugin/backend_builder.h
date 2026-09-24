@@ -10,8 +10,13 @@
 
 namespace slang_frontend {
 
+class BackendMemory;
+
 struct BackendGraphBuilder : BackendGraphBuilderBase
 {
+	BackendGraphBuilder();
+	~BackendGraphBuilder();
+
 	const slang::SourceManager *source_mgr;
 	RTLIL::Module *canvas = nullptr;
 	Yosys::dict<RTLIL::IdString, RTLIL::Const> staged_attributes;
@@ -37,8 +42,6 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 			bool public_name = false) override;
 	void connect(ir::Value target, ir::Value source) override;
 	void set_initialization(ir::Value signal, ir::Const init_value) override;
-	void add_memory_init(
-			std::string_view name, uint64_t bit_offset, bool big_endian, ir::Const data) override;
 	void add_dual_edge_aldff(const std::string &base_name, ir::Net clk, ir::Net aload,
 			const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 			bool aload_polarity) override;
@@ -60,6 +63,15 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 	std::unique_ptr<BackendGraphBuilder> start_new_graph(std::string_view graph_name);
 	void finalize();
 
+	ir::Memory *add_memory(
+			std::string_view name, uint64_t width, slang::ConstantRange range) override;
+	void add_read_port(ir::Memory *memory, ir::Value address, ir::Value data) override;
+	ir::WritePort *add_write_port(ir::Memory *memory, std::span<ir::WritePort *> preceding,
+			bool clocked, bool clock_polarity, ir::Net clk, const ir::Value &enable,
+			const ir::Value &address, const ir::Value &data) override;
+	void add_memory_init(
+			ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data) override;
+
 private:
 	ir::Value UnopInternal(RTLIL::IdString op, ir::Value a, bool a_signed, uint64_t y_width);
 	ir::Value BiopInternal(RTLIL::IdString op, ir::Value a, ir::Value b, bool a_signed,
@@ -71,7 +83,9 @@ private:
 
 	std::pair<std::string, ir::Value> add_y_wire(int width);
 	// apply attributes to newly created cell
-	void bless_cell(RTLIL::Cell *cell);
+	void bless_object(RTLIL::AttrObject *cell);
+
+	std::vector<std::unique_ptr<BackendMemory>> memories;
 };
 
 class AttributeGuard

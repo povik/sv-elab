@@ -1485,37 +1485,15 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			const ast::ElementSelectExpression &elemsel = expr.as<ast::ElementSelectExpression>();
 
 			if (netlist.is_inferred_memory(elemsel.value()) && !in_sva_expression) {
-#ifndef SLANG_NO_YOSYS
-				int width = elemsel.type->getBitstreamWidth();
-				std::string id = netlist.id(elemsel.value()
-										.as<ast::ValueExpressionBase>().symbol);
-				RTLIL::Cell *memrd = netlist.backend->canvas->addCell(netlist.backend->new_id(), ID($memrd_v2));
-				memrd->setParam(ID::MEMID, id);
-				memrd->setParam(ID::CLK_ENABLE, false);
-				memrd->setParam(ID::CLK_POLARITY, false);
-				memrd->setParam(ID::TRANSPARENCY_MASK, RTLIL::Const(0, 0));
-				memrd->setParam(ID::COLLISION_X_MASK, RTLIL::Const(0, 0));
-				memrd->setParam(ID::CE_OVER_SRST, false);
-				memrd->setParam(ID::ARST_VALUE, RTLIL::Const(RTLIL::Sx, width));
-				memrd->setParam(ID::SRST_VALUE, RTLIL::Const(RTLIL::Sx, width));
-				memrd->setParam(ID::INIT_VALUE, RTLIL::Const(RTLIL::Sx, width));
-				memrd->setPort(ID::CLK, RTLIL::Sx);
-				memrd->setPort(ID::EN, RTLIL::S1);
-				memrd->setPort(ID::ARST, RTLIL::S0);
-				memrd->setPort(ID::SRST, RTLIL::S0);
-				// TODO: signedness
-				RTLIL::SigSpec addr = (*this)(elemsel.selector());
-				memrd->setPort(ID::ADDR, addr);
-				memrd->setParam(ID::ABITS, addr.size());
+				uint64_t width = elemsel.type->getBitstreamWidth();
+				auto memory_symbol = &elemsel.value().as<ast::ValueExpressionBase>().symbol;
+				log_assert(netlist.emitted_mems.count(memory_symbol));
+				ir::Memory *memory = netlist.emitted_mems.at(memory_symbol);
 				ret = netlist.add_placeholder_signal(width);
-				memrd->setPort(ID::DATA, ret);
-				memrd->setParam(ID::WIDTH, width);
-				transfer_attrs(netlist, expr, memrd);
+				// TODO: signedness
+				ir::Value address = (*this)(elemsel.selector());
+				netlist.backend->add_read_port(memory, address, ret);
 				break;
-#else
-				// Unreachable: memory inference is disabled under SLANG_NO_YOSYS
-				log_abort();
-#endif
 			}
 
 			AddressingResolver addr(*this, elemsel);
@@ -2671,24 +2649,20 @@ public:
 			log_debug("Adding %s (%s)\n", netlist.id(sym).c_str(), kind.c_str());
 
 			if (netlist.is_inferred_memory(sym)) {
+				AttributeGuard guard(netlist);
 #ifndef SLANG_NO_YOSYS
-				RTLIL::Memory *m = new RTLIL::Memory;
-				m->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
-				transfer_attrs(netlist, sym, m);
-				m->name = netlist.id(sym);
-				m->width = sym.getType().getArrayElementType()->getBitstreamWidth();
-				auto range = sym.getType().getFixedRange();
-				m->start_offset = range.lower();
-				m->size = range.width();
-				netlist.backend->canvas->memories[m->name] = m;
-				netlist.emitted_mems[m->name] = {};
-
-				log_debug("Memory inferred for variable %s (size: %d, width: %d)\n",
-						  log_id(m->name), m->size, m->width);
+				guard.set(ID::hdlname, netlist.hdlname(sym));
 #else
-				// Unreachable: memory inference is disabled under SLANG_NO_YOSYS
-				log_abort();
+				guard.set("hdlname", netlist.hdlname(sym));
 #endif
+				transfer_attrs(netlist, sym, guard);
+
+				uint64_t width = sym.getType().getArrayElementType()->getBitstreamWidth();
+				auto range = sym.getType().getFixedRange();
+				ir::Memory *memory = netlist.backend->add_memory(netlist.id(sym), width, range);
+				netlist.emitted_mems[&sym] = memory;
+				log_debug("Memory inferred for variable %s ([%" PRId32 ":%" PRId32 "], width: %" PRIu64 ")\n",
+						  log_id(netlist.id(sym)), range.left, range.right, width);
 			} else {
 				netlist.add_wire(sym);
 			}

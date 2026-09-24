@@ -45,34 +45,34 @@ std::pair<std::string, ir::Value> BackendGraphBuilder::add_y_wire(int width)
 	return {id, canvas->addWire(id + "y", width)};
 }
 
-void BackendGraphBuilder::bless_cell(RTLIL::Cell *cell)
+void BackendGraphBuilder::bless_object(RTLIL::AttrObject *object)
 {
-	cell->attributes = staged_attributes;
-	if (staged_source_range_valid && !cell->attributes.count(ID::src)) {
+	object->attributes = staged_attributes;
+	if (staged_source_range_valid && !object->attributes.count(ID::src)) {
 		auto src = format_src(source_mgr, staged_source_range);
 		if (!src.empty())
-			cell->attributes[ID::src] = src;
+			object->attributes[ID::src] = src;
 	}
 }
 
 ir::Value BackendGraphBuilder::Demux(ir::Value a, ir::Value s)
 {
 	auto [id, y] = add_y_wire(a.size() << s.size());
-	bless_cell(canvas->addDemux(id, a, s, y));
+	bless_object(canvas->addDemux(id, a, s, y));
 	return y;
 }
 
 ir::Value BackendGraphBuilder::Mux(ir::Value a, ir::Value b, ir::Net s)
 {
 	auto [id, y] = add_y_wire(a.size());
-	bless_cell(canvas->addMux(id, a, b, {s}, y));
+	bless_object(canvas->addMux(id, a, b, {s}, y));
 	return y;
 }
 
 ir::Value BackendGraphBuilder::Bwmux(ir::Value a, ir::Value b, ir::Value s)
 {
 	auto [id, y] = add_y_wire(a.size());
-	bless_cell(canvas->addBwmux(id, a, b, s, y));
+	bless_object(canvas->addBwmux(id, a, b, s, y));
 	return y;
 }
 
@@ -88,7 +88,7 @@ ir::Value BackendGraphBuilder::Shift(ir::Value a, ir::Value b, bool b_signed, ui
 	cell->setPort(Yosys::ID::A, a);
 	cell->setPort(Yosys::ID::B, b);
 	cell->setPort(Yosys::ID::Y, y);
-	bless_cell(cell);
+	bless_object(cell);
 	return y;
 }
 
@@ -96,7 +96,7 @@ ir::Value BackendGraphBuilder::Shiftx(
 		ir::Value a, ir::Value s, bool s_signed, uint64_t result_width)
 {
 	auto [id, y] = add_y_wire(result_width);
-	bless_cell(canvas->addShiftx(id, a, s, y, s_signed));
+	bless_object(canvas->addShiftx(id, a, s, y, s_signed));
 	return y;
 }
 
@@ -106,7 +106,7 @@ ir::Value BackendGraphBuilder::Bmux(ir::Value a, ir::Value s)
 	log_assert(a.size() >= 1ULL << s.size());
 	int stride = a.size() >> s.size();
 	auto [id, y] = add_y_wire(stride);
-	bless_cell(canvas->addBmux(id, a, s, y));
+	bless_object(canvas->addBmux(id, a, s, y));
 	return y;
 }
 
@@ -196,7 +196,7 @@ ir::Value BackendGraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Val
 	cell->setParam(RTLIL::ID::B_SIGNED, b_signed);
 	cell->setParam(RTLIL::ID::Y_WIDTH, y_width);
 	cell->setPort(RTLIL::ID::Y, y);
-	bless_cell(cell);
+	bless_object(cell);
 	return y;
 }
 
@@ -260,7 +260,7 @@ ir::Value BackendGraphBuilder::Unop(
 	cell->setParam(RTLIL::ID::A_SIGNED, a_signed);
 	cell->setParam(RTLIL::ID::Y_WIDTH, y_width);
 	cell->setPort(RTLIL::ID::Y, y);
-	bless_cell(cell);
+	bless_object(cell);
 
 	ir::Value ret = y;
 	if (invert)
@@ -273,7 +273,7 @@ void BackendGraphBuilder::connect(ir::Value lhs, ir::Value rhs)
 	log_assert(lhs.size() == rhs.size());
 	if (!lhs.empty()) {
 		Cell *cell = canvas->addBuf(new_id(), rhs, lhs);
-		bless_cell(cell);
+		bless_object(cell);
 	}
 }
 
@@ -302,32 +302,32 @@ void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::
 		RTLIL::Cell *pos_ff =
 				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
 						RTLIL::SigBit(clk), d, pos_q, /*edge_polarity=*/true);
-		bless_cell(pos_ff);
+		bless_object(pos_ff);
 
 		// Create negedge FF
 		RTLIL::Cell *neg_ff =
 				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())),
 						RTLIL::SigBit(clk), d, neg_q, /*edge_polarity=*/false);
-		bless_cell(neg_ff);
+		bless_object(neg_ff);
 	} else {
 		RTLIL::Cell *pos_ff =
 				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
 						RTLIL::SigBit(clk), RTLIL::SigBit(aload), d, pos_q, ad,
 						/*clk_polarity=*/true, aload_polarity);
-		bless_cell(pos_ff);
+		bless_object(pos_ff);
 
 		RTLIL::Cell *neg_ff =
 				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())),
 						RTLIL::SigBit(clk), RTLIL::SigBit(aload), d, neg_q, ad,
 						/*clk_polarity=*/false, aload_polarity);
-		bless_cell(neg_ff);
+		bless_object(neg_ff);
 	}
 
 	// behaviour: when clk=0: select neg_q (captures on negedge), when clk=1: select pos_q (captures
 	// on posedge)
 	RTLIL::Cell *mux = canvas->addMux(canvas->uniquify(Yosys::stringf("%s$mux", base_name.c_str())),
 			/*A=*/neg_q, /*B=*/pos_q, /*S=*/RTLIL::SigBit(clk), /*Y=*/q);
-	bless_cell(mux);
+	bless_object(mux);
 }
 
 void BackendGraphBuilder::add_dff(std::string_view name, const ir::Net clk, const ir::Value &d,
@@ -335,7 +335,7 @@ void BackendGraphBuilder::add_dff(std::string_view name, const ir::Net clk, cons
 {
 	RTLIL::Cell *cell =
 			canvas->addDff(canvas->uniquify(id(name)), RTLIL::SigBit(clk), d, q, clk_polarity);
-	bless_cell(cell);
+	bless_object(cell);
 }
 
 void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
@@ -343,7 +343,7 @@ void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Net clk, con
 {
 	RTLIL::Cell *cell = canvas->addDffe(canvas->uniquify(id(name)), RTLIL::SigBit(clk),
 			RTLIL::SigBit(en), d, q, clk_polarity, en_polarity);
-	bless_cell(cell);
+	bless_object(cell);
 }
 
 void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
@@ -352,7 +352,7 @@ void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Net clk, co
 {
 	RTLIL::Cell *cell = canvas->addAldff(canvas->uniquify(id(name)), RTLIL::SigBit(clk),
 			RTLIL::SigBit(aload), d, q, ad, clk_polarity, aload_polarity);
-	bless_cell(cell);
+	bless_object(cell);
 }
 
 void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en,
@@ -362,7 +362,7 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 	RTLIL::Cell *cell =
 			canvas->addAldffe(canvas->uniquify(id(name)), RTLIL::SigBit(clk), RTLIL::SigBit(en),
 					RTLIL::SigBit(aload), d, q, ad, clk_polarity, en_polarity, aload_polarity);
-	bless_cell(cell);
+	bless_object(cell);
 }
 
 void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::string_view name,
@@ -382,7 +382,100 @@ void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::
 		cell->setParam(RTLIL::escape_id(param.name), const_rtlil);
 	}
 
-	bless_cell(cell);
+	bless_object(cell);
+}
+
+class BackendMemory : public ir::Memory
+{
+public:
+	BackendMemory(RTLIL::Memory *ptr) : rtlil_memory(ptr) {}
+
+	RTLIL::Memory *rtlil_memory;
+	int num_wr_ports = 0;
+};
+
+ir::Memory *BackendGraphBuilder::add_memory(
+		std::string_view name, uint64_t width, slang::ConstantRange range)
+{
+	RTLIL::Memory *memory = new RTLIL::Memory;
+	memory->name = name;
+	memory->width = width;
+	memory->start_offset = range.lower();
+	memory->size = range.width();
+	canvas->memories[memory->name] = memory;
+	bless_object(memory);
+
+	memories.push_back(std::make_unique<BackendMemory>(memory));
+	return memories.back().get();
+}
+
+void BackendGraphBuilder::add_read_port(ir::Memory *memory, ir::Value address, ir::Value data)
+{
+	auto rtlil_memory = static_cast<BackendMemory *>(memory)->rtlil_memory;
+	auto width = rtlil_memory->width;
+	assert(data.width() == (uint64_t)width);
+	RTLIL::Cell *port = canvas->addCell(new_id(), ID($memrd_v2));
+	port->setParam(ID::MEMID, rtlil_memory->name.str());
+	port->setParam(ID::ABITS, address.size());
+	port->setParam(ID::WIDTH, width);
+	port->setParam(ID::CLK_ENABLE, false);
+	port->setParam(ID::CLK_POLARITY, false);
+	port->setParam(ID::TRANSPARENCY_MASK, RTLIL::Const(0, 0));
+	port->setParam(ID::COLLISION_X_MASK, RTLIL::Const(0, 0));
+	port->setParam(ID::CE_OVER_SRST, false);
+	port->setParam(ID::ARST_VALUE, RTLIL::Const(RTLIL::Sx, width));
+	port->setParam(ID::SRST_VALUE, RTLIL::Const(RTLIL::Sx, width));
+	port->setParam(ID::INIT_VALUE, RTLIL::Const(RTLIL::Sx, width));
+	port->setPort(ID::CLK, RTLIL::Sx);
+	port->setPort(ID::EN, RTLIL::S1);
+	port->setPort(ID::ARST, RTLIL::S0);
+	port->setPort(ID::SRST, RTLIL::S0);
+	port->setPort(ID::ADDR, address);
+	port->setPort(ID::DATA, data);
+	bless_object(port);
+}
+
+ir::WritePort *BackendGraphBuilder::add_write_port(ir::Memory *memory,
+		std::span<ir::WritePort *> preceding, bool clocked, bool clock_polarity, ir::Net clk,
+		const ir::Value &enable, const ir::Value &address, const ir::Value &data)
+{
+	auto backend_memory = static_cast<BackendMemory *>(memory);
+	auto rtlil_memory = backend_memory->rtlil_memory;
+	auto width = rtlil_memory->width;
+	assert(data.width() == (uint64_t)width);
+
+	RTLIL::Cell *port = canvas->addCell(new_id(), ID($memwr_v2));
+	port->setParam(ID::MEMID, rtlil_memory->name.str());
+
+	if (clocked) {
+		port->setParam(ID::CLK_ENABLE, true);
+		port->setParam(ID::CLK_POLARITY, clock_polarity);
+		port->setPort(ID::CLK, ir::Value(clk));
+	} else {
+		port->setParam(ID::CLK_ENABLE, false);
+		port->setParam(ID::CLK_POLARITY, false);
+		port->setPort(ID::CLK, RTLIL::Sx);
+	}
+
+	int portid = backend_memory->num_wr_ports++;
+	port->setParam(ID::PORTID, portid);
+	std::vector<RTLIL::State> prio_mask(portid, RTLIL::S0);
+	for (auto preceding_port : preceding) {
+		auto preceding_port1 = reinterpret_cast<RTLIL::Cell *>(preceding_port);
+		assert(preceding_port1->type == ID($memwr_v2));
+		if (port->getParam(ID::MEMID) == preceding_port1->getParam(ID::MEMID)) {
+			prio_mask[preceding_port1->getParam(ID::PORTID).as_int()] = RTLIL::S1;
+		}
+	}
+
+	port->setParam(ID::PRIORITY_MASK, prio_mask);
+	port->setPort(ID::EN, enable);
+	port->setParam(ID::ABITS, address.size());
+	port->setPort(ID::ADDR, address);
+	port->setParam(ID::WIDTH, data.size());
+	port->setPort(ID::DATA, data);
+	bless_object(port);
+	return reinterpret_cast<ir::WritePort *>(port);
 }
 
 static const RTLIL::Const reverse_data(RTLIL::Const &orig, int width)
@@ -417,17 +510,16 @@ void BackendGraphBuilder::emit_meminit_cell(
 	cell->setPort(
 			ID::DATA, big_endian ? reverse_data(data.raw_rtlil(), mem->width) : data.to_rtlil());
 	cell->setPort(ID::EN, mask.to_rtlil());
-	bless_cell(cell);
+	bless_object(cell);
 }
 
 void BackendGraphBuilder::add_memory_init(
-		std::string_view name, uint64_t bit_offset, bool big_endian, ir::Const data)
+		ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data)
 {
 	if (data.empty())
 		return;
 
-	RTLIL::Memory *mem = canvas->memories.at(id(name));
-	log_assert(mem);
+	auto rtlil_memory = static_cast<BackendMemory *>(memory)->rtlil_memory;
 
 	uint64_t processed = 0;
 
@@ -438,37 +530,38 @@ void BackendGraphBuilder::add_memory_init(
 
 	// Depending on the offset alignment with respect to word boundaries
 	// we might need to emit up to 3 instances of the `$meminit_v2` cell.
-	if (bit_offset % mem->width != 0) {
-		uint64_t offset_in_cell = bit_offset % mem->width;
-		uint64_t length = std::min(mem->width - offset_in_cell, data.size());
+	auto width = rtlil_memory->width;
+	if (bit_offset % width != 0) {
+		uint64_t offset_in_cell = bit_offset % width;
+		uint64_t length = std::min(width - offset_in_cell, data.size());
 		Const data1, mask1;
 		data1.append(Const(Sx, offset_in_cell));
 		data1.append(data.extract(0, length));
-		data1.append(Const(Sx, mem->width - offset_in_cell - length));
+		data1.append(Const(Sx, width - offset_in_cell - length));
 		mask1.append(Const(S0, offset_in_cell));
 		mask1.append(Const(S1, length));
-		mask1.append(Const(S0, mem->width - offset_in_cell - length));
-		emit_meminit_cell(mem, bit_offset / mem->width, big_endian, data1, mask1);
+		mask1.append(Const(S0, width - offset_in_cell - length));
+		emit_meminit_cell(rtlil_memory, bit_offset / width, big_endian, data1, mask1);
 		processed += length;
 	}
 
 	if (processed < data.size()) {
-		log_assert((bit_offset + processed) % mem->width == 0);
-		uint64_t length = ((((uint64_t)data.size()) - processed) / mem->width) * mem->width;
-		emit_meminit_cell(mem, (bit_offset + processed) / mem->width, big_endian,
-				data.extract(processed, length), Const(S1, mem->width));
+		log_assert((bit_offset + processed) % width == 0);
+		uint64_t length = ((((uint64_t)data.size()) - processed) / width) * width;
+		emit_meminit_cell(rtlil_memory, (bit_offset + processed) / width, big_endian,
+				data.extract(processed, length), Const(S1, width));
 		processed += length;
 	}
 
 	if (processed < data.size()) {
 		uint64_t length = data.size() - processed;
-		log_assert(length < uint64_t(mem->width));
+		log_assert(length < uint64_t(width));
 		Const data1, mask1;
 		data1.append(data.extract(0, length));
-		data1.append(Const(Sx, mem->width - length));
+		data1.append(Const(Sx, width - length));
 		mask1.append(Const(S1, length));
-		mask1.append(Const(S0, mem->width - length));
-		emit_meminit_cell(mem, bit_offset / mem->width, big_endian, data1, mask1);
+		mask1.append(Const(S0, width - length));
+		emit_meminit_cell(rtlil_memory, bit_offset / width, big_endian, data1, mask1);
 		processed += length;
 	}
 
@@ -486,7 +579,7 @@ ir::Value BackendGraphBuilder::add_placeholder_signal(
 		name = new_id(std::string(name_suggestion));
 	}
 	RTLIL::Wire *wire = canvas->addWire(name, (int)width);
-	wire->attributes = staged_attributes;
+	bless_object(wire);
 	return wire;
 }
 
@@ -506,5 +599,11 @@ void BackendGraphBuilder::finalize()
 		canvas->check();
 	}
 }
+
+BackendGraphBuilder::BackendGraphBuilder()
+{}
+
+BackendGraphBuilder::~BackendGraphBuilder()
+{}
 
 } // namespace slang_frontend

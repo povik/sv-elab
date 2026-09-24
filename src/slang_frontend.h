@@ -161,6 +161,11 @@ namespace slang {
 	}
 };
 
+namespace ir {
+class Memory {};
+class WritePort {};
+};
+
 namespace slang_frontend {
 
 using Yosys::log;
@@ -368,10 +373,7 @@ public:
 
 	// only used when timing.kind==ProcessTiming::Initial
 	hashlib::dict<VariableBit, ir::Trit> initial_locals_state;
-
-#ifndef SLANG_NO_YOSYS
-	std::vector<RTLIL::Cell *> preceding_memwr;
-#endif
+	std::vector<ir::WritePort *> preceding_memwr;
 
 private:
 	int flag_counter = 0;
@@ -478,6 +480,9 @@ private:
 	ProceduralContext &context;
 };
 
+class Memory {
+};
+
 struct BackendGraphBuilderBase {
 	virtual ~BackendGraphBuilderBase() = default;
 
@@ -519,10 +524,19 @@ struct BackendGraphBuilderBase {
 	// `signal` is exactly as returned from an earlier call to `add_placeholder_signal`
 	virtual void set_initialization(ir::Value signal, ir::Const init_value) = 0;
 
+	// clang-format on
+	virtual ir::Memory *add_memory(
+			std::string_view name, uint64_t width, slang::ConstantRange range) = 0;
+	virtual void add_read_port(ir::Memory *memory, ir::Value address, ir::Value data) = 0;
+	virtual ir::WritePort *add_write_port(ir::Memory *memory, std::span<ir::WritePort *> preceding,
+			bool clocked, bool clock_polarity, ir::Net clk, const ir::Value &enable,
+			const ir::Value &address, const ir::Value &data) = 0;
+
 	// Add initialization data on the given memory. The data starts
 	// at bit position `base` which does not need be a word boundary
-	virtual void add_memory_init(std::string_view name, uint64_t bit_offset,
-						 		 bool big_endian, ir::Const data) = 0;
+	virtual void add_memory_init(
+			ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data) = 0;
+	// clang-format off
 
 	// Mark a placeholder signal as a module input port.
 	virtual void add_input(std::string_view name, ir::Value signal) { (void)name; (void)signal; }
@@ -727,12 +741,7 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 	const ir::Value &wire(const ast::Symbol &sym);
 	ir::Value convert_static(VariableBits bits);
 
-	struct Memory {
-		int num_wr_ports = 0;
-	};
-#ifndef SLANG_NO_YOSYS
-	Yosys::dict<RTLIL::IdString, Memory> emitted_mems;
-#endif
+	hashlib::dict<const ast::Symbol*, ir::Memory *> emitted_mems;
 
 	// Used to implement modports on `realm`, populated in `prepare_interface_ports`
 	hashlib::dict<const ast::Scope*, std::string> scopes_remap;

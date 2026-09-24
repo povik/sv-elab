@@ -407,12 +407,6 @@ void GraphBuilder::set_initialization(ir::Value signal, ir::Const init_value)
 	backend->set_initialization(signal, init_value);
 }
 
-void GraphBuilder::add_memory_init(
-		std::string_view name, uint64_t bit_offset, bool big_endian, ir::Const data)
-{
-	backend->add_memory_init(name, bit_offset, big_endian, data);
-}
-
 void GraphBuilder::add_input(std::string_view name, ir::Value signal)
 {
 	backend->add_input(name, signal);

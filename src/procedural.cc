@@ -126,9 +126,7 @@ void ProceduralContext::inherit_state(ProceduralContext &other)
 	assert(seen_nonblocking_assignment.empty());
 	seen_blocking_assignment = other.seen_blocking_assignment;
 	seen_nonblocking_assignment = other.seen_nonblocking_assignment;
-#ifndef SLANG_NO_YOSYS
 	preceding_memwr = other.preceding_memwr;
-#endif
 	vstate = other.vstate;
 	flag_counter = other.flag_counter;
 }
@@ -290,7 +288,10 @@ void ProceduralContext::update_variable_state(slang::SourceLocation loc, Variabl
 				if (netlist.is_inferred_memory(symbol)) {
 					bool big_endian =
 							!symbol.as<ast::ValueSymbol>().getType().getFixedRange().isDescending();
-					netlist.backend->add_memory_init(netlist.id(symbol), chunk.base, big_endian,
+					auto memory_it = netlist.emitted_mems.find(&symbol);
+					assert(memory_it != netlist.emitted_mems.end());
+					auto memory = memory_it->second;
+					netlist.backend->add_memory_init(memory, chunk.base, big_endian,
 							rvalue.extract((int)base, (int)size).as_const());
 				}
 			} break;
@@ -399,49 +400,33 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 				{ir::Value(ir::Sx, pad), rvalue, ir::Value(ir::Sx, member_acc->base_offset)},
 				{ir::Value(ir::S0, pad), mask, ir::Value(ir::S0, member_acc->base_offset)},
 				blocking);
-#ifndef SLANG_NO_YOSYS
 	} else if (auto mem_write = std::get_if<LValue::MemoryWrite>(&lvalue.descriptor)) {
 		auto &netlist = context.netlist;
-		RTLIL::Cell *cell =
-				netlist.backend->canvas->addCell(netlist.backend->new_id(), ID($memwr_v2));
-		std::string id = netlist.id(*mem_write->target.get_symbol());
-		cell->setParam(ID::MEMID, id);
 		auto &timing = context.timing;
+
+		auto memory_it = netlist.emitted_mems.find(mem_write->target.get_symbol());
+		assert(memory_it != netlist.emitted_mems.end());
+		auto memory = memory_it->second;
+
+		ir::WritePort *port = nullptr;
+
+		ir::Value enable = netlist.Mux(ir::Value(ir::S0, mask.size()), mask,
+				netlist.LogicAnd(context.case_enable(), timing.background_enable));
+
 		if (timing.kind == ProcessTiming::Implicit) {
-			cell->setParam(ID::CLK_ENABLE, false);
-			cell->setParam(ID::CLK_POLARITY, false);
-			cell->setPort(ID::CLK, RTLIL::Sx);
+			port = netlist.backend->add_write_port(memory, context.preceding_memwr, false, false,
+					ir::Sx, enable, mem_write->address, rvalue);
 		} else if (timing.kind == ProcessTiming::EdgeTriggered) {
 			require(assign, timing.triggers.size() == 1);
 			auto &trigger = timing.triggers[0];
-			cell->setParam(ID::CLK_ENABLE, true);
-			cell->setParam(ID::CLK_POLARITY, trigger.edge_polarity);
-			cell->setPort(ID::CLK, ir::Value(trigger.signal));
+			port = netlist.backend->add_write_port(memory, context.preceding_memwr, true,
+					trigger.edge_polarity, trigger.signal, enable, mem_write->address, rvalue);
+
 		} else {
 			ast_unreachable(assign);
 		}
 
-		int portid = context.netlist.emitted_mems[id].num_wr_ports++;
-		cell->setParam(ID::PORTID, portid);
-		std::vector<RTLIL::State> prio_mask(portid, RTLIL::S0);
-		auto &preceding_memwr = context.preceding_memwr;
-		for (auto prev : preceding_memwr) {
-			log_assert(prev->type == ID($memwr_v2));
-			if (prev->getParam(ID::MEMID) == cell->getParam(ID::MEMID)) {
-				prio_mask[prev->getParam(ID::PORTID).as_int()] = RTLIL::S1;
-			}
-		}
-		preceding_memwr.push_back(cell);
-
-		cell->setParam(ID::PRIORITY_MASK, prio_mask);
-		cell->setPort(
-				ID::EN, netlist.Mux(RTLIL::SigSpec(RTLIL::S0, mask.size()), mask,
-								netlist.LogicAnd(context.case_enable(), timing.background_enable)));
-		cell->setParam(ID::ABITS, mem_write->address.size());
-		cell->setPort(ID::ADDR, mem_write->address);
-		cell->setParam(ID::WIDTH, rvalue.size());
-		cell->setPort(ID::DATA, rvalue);
-#endif // SLANG_NO_YOSYS
+		context.preceding_memwr.push_back(port);
 	} else {
 		// unreachable
 		log_abort();
