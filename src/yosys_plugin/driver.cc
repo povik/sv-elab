@@ -18,6 +18,7 @@
 #include "slang/diagnostics/LookupDiags.h"
 #include "slang/syntax/AllSyntax.h"
 #include "slang/text/Json.h"
+#include "slang/text/SourceSnippet.h"
 
 #include "backend_builder.h"
 #include "diag.h"
@@ -246,6 +247,81 @@ static std::vector<std::string> default_options;
 static std::vector<std::vector<std::string>> defaults_stack;
 static std::string expected_diagnostic;
 
+#if YOSYS_MAJOR > 0 || YOSYS_MINOR > 69
+#define YOSYS_NEW_LOGGING 1
+#elif YOSYS_MAJOR == 0 && YOSYS_MINOR == 69
+#if YOSYS_COMMIT > 150
+#define YOSYS_NEW_LOGGING 1
+#else
+#define YOSYS_NEW_LOGGING 0
+#endif
+#else
+#define YOSYS_NEW_LOGGING 0
+#endif
+
+#if YOSYS_NEW_LOGGING
+class YosysDiagnosticClient : public slang::DiagnosticClient {
+public:
+	YosysDiagnosticClient() {}
+
+	void report(const slang::ReportedDiagnostic& diag) override {
+		writeDiagnostic(diag, diag.severity);
+		for (auto& note : diag.notes)
+			writeDiagnostic(note, slang::DiagnosticSeverity::Note);
+	}
+	void writeDiagnostic(const slang::ReportedDiagnosticInfo& diag, slang::DiagnosticSeverity severity) {
+		slang::SmallVector<slang::SourceRange> mappedRanges;
+		engine->mapSourceRanges(diag.location, diag.ranges, mappedRanges);
+
+		// Write the diagnostic.
+		formatDiag(diag.location, mappedRanges, severity, diag.formattedMessage,
+				engine->getOptionName(diag.originalDiagnostic.code));
+
+		// Write out macro expansions, if we have any, in reverse order.
+		for (auto it = diag.expansionLocs.rbegin(); it != diag.expansionLocs.rend(); it++) {
+			slang::SourceLocation loc = *it;
+			std::string name(sourceManager->getMacroName(loc));
+			if (name.empty())
+				name = "expanded from here";
+			else
+				name = stringf("expanded from macro '%s'", name);
+
+			slang::SmallVector<slang::SourceRange> macroRanges;
+			engine->mapSourceRanges(loc, diag.ranges, macroRanges);
+			formatDiag(sourceManager->getFullyOriginalLoc(loc), macroRanges,
+					slang::DiagnosticSeverity::Note, name, "");
+		}
+	}
+	void formatDiag(slang::SourceLocation loc, std::span<const slang::SourceRange> ranges,
+										slang::DiagnosticSeverity severity, std::string message,
+										std::string_view optionName) {
+		bool hasLocation = loc.buffer() != slang::SourceLocation::NoLocation.buffer();
+		auto src = hasLocation ? LogSourceLocation(getFileName(loc),sourceManager->getLineNumber(loc)) : LogSourceLocation{};
+		if (!optionName.empty())
+			message += stringf(" [-W%s]", optionName);
+		if (severity==slang::DiagnosticSeverity::Warning) {
+			log_file_warning(src,"%s\n",message);
+		} else if (severity==slang::DiagnosticSeverity::Error || severity==slang::DiagnosticSeverity::Fatal) {
+			log_file_nonfatal_error(src,"%s\n",message);
+		} else {
+			log_file_info(src,"%s\n",message);
+		}
+
+		constexpr size_t MaxLineLengthToPrint = 4096;
+		if (hasLocation) {
+			size_t col = sourceManager->getColumnNumber(loc);
+			std::string_view line = sourceManager->getSourceLine(loc);
+			if (!line.empty() && line.length() < MaxLineLengthToPrint) {
+				slang::SmallVector<std::pair<size_t, size_t>, 4> invalidRanges;
+				slang::SourceSnippet snippet(line, 8, ranges, loc, col, invalidRanges);
+				log("%s\n", snippet.getSnippetLine());
+				log_highlight("%s\n", snippet.getHighlightLine());				
+			}
+		}
+	}
+};
+#endif
+
 struct SlangFrontend : Frontend
 {
 	SlangFrontend() : Frontend("slang", "read SystemVerilog (slang)") {}
@@ -389,7 +465,11 @@ struct SlangFrontend : Frontend
 		SynthesisSettings settings;
 		settings.addOptions(driver.cmdLine);
 		diag::setup_messages(driver.diagEngine);
-
+#if YOSYS_NEW_LOGGING
+		auto client = std::make_shared<YosysDiagnosticClient>();
+		driver.diagEngine.clearClients();
+		driver.diagEngine.addClient(client);
+#endif
 		{
 			if (auto heredoc = read_heredoc(args)) {
 				auto buffer = driver.sourceManager.assignText(
@@ -662,7 +742,11 @@ struct TestSlangExprPass : Pass
 		SynthesisSettings settings;
 		settings.addOptions(driver.cmdLine);
 		diag::setup_messages(driver.diagEngine);
-
+#if YOSYS_NEW_LOGGING
+		auto client = std::make_shared<YosysDiagnosticClient>();
+		driver.diagEngine.clearClients();
+		driver.diagEngine.addClient(client);
+#endif
 		{
 			std::vector<char *> c_args;
 			for (auto arg : args) {
