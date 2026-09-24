@@ -21,6 +21,7 @@ add_library(yosys-slang ${LIBRARY_TYPE}
     yosys_plugin/driver.cc
     yosys_plugin/ir.cc
     yosys_plugin/ir.h
+    yosys_plugin/sva.cc
     addressing.cc
     async_pattern.cc
     async_pattern.h
@@ -35,7 +36,6 @@ add_library(yosys-slang ${LIBRARY_TYPE}
     slang_frontend.cc
     slang_frontend.h
     statements.h
-    sva.cc
     variables.cc
     variables.h
     ${CMAKE_CURRENT_BINARY_DIR}/version.h
