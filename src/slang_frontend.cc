@@ -3355,6 +3355,9 @@ bool NetlistContext::is_blackbox(const ast::DefinitionSymbol &sym, slang::Diagno
 	if (settings.blackboxed_modules.contains(sym.name))
 		return true;
 
+	if (sym.getSourceLibrary() && sym.getSourceLibrary()->name == slang_frontend::BLACKBOX_LIBRARY)
+		return true;
+
 	for (auto attr : sym.getParentScope()->getCompilation().getAttributes(sym)) {
 		if (attr->name == "blackbox"sv && !attr->getValue().isFalse()) {
 			if (why_blackbox) {

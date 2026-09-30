@@ -475,6 +475,27 @@ struct SlangFrontend : Frontend
 		std::vector<RTLIL::IdString> emitted_module_names;
 		slang::driver::Driver driver;
 		driver.addStandardArgs();
+#if YOSYS_NEW_LOGGING
+		std::string synth_target;
+		std::string synth_family;
+		driver.cmdLine.setGroup("Target");
+		driver.cmdLine.add(
+			"--target",
+			[&](std::string_view value) {
+				synth_target = value;
+				return "";
+			},
+			"Specify architecture target design is synthesized for",
+			"<target-name>");
+		driver.cmdLine.add(
+			"--family",
+			[&](std::string_view value) {
+				synth_family = value;
+				return "";
+			},
+			"Specify architecture target family (optional)",
+			"<family-name>");
+#endif
 		SynthesisSettings settings;
 		settings.addOptions(driver.cmdLine);
 		diag::setup_messages(driver.diagEngine);
@@ -510,6 +531,28 @@ struct SlangFrontend : Frontend
 		if (!driver.processOptions())
 			log_cmd_error("Bad command\n");
 		catch_forbidden_options(driver);
+
+#if YOSYS_NEW_LOGGING
+		if (!synth_target.empty()) {
+			auto target_it = target_register.find(synth_target);
+			if (target_it == target_register.end())
+				log_cmd_error("Unknown target '%s'.\n", synth_target.c_str());
+
+			auto family_it = target_it->second.families.find(synth_family);
+			if (family_it == target_it->second.families.end()) {
+				if (synth_family.empty())
+					log_cmd_error("Family must be specified for target '%s'.\n", synth_target.c_str());
+				else
+					log_cmd_error("Unknown family '%s' for target '%s'.\n",
+							synth_family.c_str(), synth_target.c_str());
+			}
+
+			for (auto &file : family_it->second.files) {
+				rewrite_filename(file);
+				driver.sourceLoader.addLibraryFiles(BLACKBOX_LIBRARY, file);
+			}
+		}
+#endif
 
 		try {
 			if (!driver.parseAllSources())

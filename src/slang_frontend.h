@@ -162,6 +162,7 @@ namespace slang {
 };
 
 namespace slang_frontend {
+constexpr std::string_view BLACKBOX_LIBRARY = "TARGET_BLACKBOX_SV_ELAB";
 
 using Yosys::log;
 using Yosys::log_flush;
