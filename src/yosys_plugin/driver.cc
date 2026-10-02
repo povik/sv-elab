@@ -483,6 +483,7 @@ struct SlangFrontend : Frontend
 			"--target",
 			[&](std::string_view value) {
 				synth_target = value;
+				log_experimental("read_slang --target");
 				return "";
 			},
 			"Specify architecture target design is synthesized for",
@@ -491,6 +492,7 @@ struct SlangFrontend : Frontend
 			"--family",
 			[&](std::string_view value) {
 				synth_family = value;
+				log_experimental("read_slang --family");
 				return "";
 			},
 			"Specify architecture target family (optional)",
