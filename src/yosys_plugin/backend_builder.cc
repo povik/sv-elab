@@ -443,6 +443,7 @@ ir::WritePort *BackendGraphBuilder::add_write_port(ir::Memory *memory,
 	auto rtlil_memory = backend_memory->rtlil_memory;
 	auto width = rtlil_memory->width;
 	assert(data.width() == (uint64_t)width);
+	(void)width;
 
 	RTLIL::Cell *port = canvas->addCell(new_id(), ID($memwr_v2));
 	port->setParam(ID::MEMID, rtlil_memory->name.str());
