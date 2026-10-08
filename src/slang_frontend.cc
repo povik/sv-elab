@@ -927,10 +927,31 @@ ir::Value handle_sampled_value_func(EvalContext &eval, const ast::CallExpression
 		return netlist.Eq(current_val, past_val);
 	case SampledValueFunc::Changed:
 		return netlist.LogicNot(netlist.Eq(current_val, past_val));
-    case SampledValueFunc::Rose:
-		return netlist.LogicAnd(netlist.LogicNot(ir::Net(past_val[0])), ir::Net(current_val[0]));
+	case SampledValueFunc::Rose:
+		// $rose: the LSB changed to 1, i.e. it is 1 now and was not 1 before
+		// (0, x or z). Case (in)equality is used so that x/z counts as "not
+		// 1" instead of making the result unknown (IEEE 1800-2017 16.9.3).
+		{
+			ir::Value past_is_one = netlist.Biop(
+					ast::BinaryOperator::CaseEquality,
+					ir::Value(past_val[0]), ir::Value(ir::S1), false, false, 1);
+			ir::Value current_is_one = netlist.Biop(
+					ast::BinaryOperator::CaseEquality,
+					ir::Value(current_val[0]), ir::Value(ir::S1), false, false, 1);
+			return netlist.LogicAnd(netlist.LogicNot(past_is_one), current_is_one);
+		}
 	case SampledValueFunc::Fell:
-		return netlist.LogicAnd(ir::Net(past_val[0]), netlist.LogicNot(ir::Net(current_val[0])));
+		// $fell: the LSB changed to 0, i.e. it is 0 now and was not 0 before
+		// (1, x or z).
+		{
+			ir::Value past_is_zero = netlist.Biop(
+					ast::BinaryOperator::CaseEquality,
+					ir::Value(past_val[0]), ir::Value(ir::S0), false, false, 1);
+			ir::Value current_is_zero = netlist.Biop(
+					ast::BinaryOperator::CaseEquality,
+					ir::Value(current_val[0]), ir::Value(ir::S0), false, false, 1);
+			return netlist.LogicAnd(netlist.LogicNot(past_is_zero), current_is_zero);
+		}
 	default:
 		assert_invariant(false && "unreachable");
 	}

@@ -237,6 +237,51 @@ sat -seq 20 -set-init-zero -prove-asserts -verify dff_fell01_miter
 
 design -reset
 read_slang <<EOF
+module dff_rose02_gate(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= $rose(d);
+	end
+endmodule
+EOF
+
+read_slang <<EOF
+module dff_rose02_gold(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		// $past(d) may be x/z; those count as "not 1" (IEEE 1800-2017 16.9.3)
+		q <= !($past(d) === 1'b1) && (d === 1'b1);
+	end
+endmodule
+EOF
+
+async2sync
+miter -equiv -make_assert -flatten dff_rose02_gold dff_rose02_gate dff_rose02_miter
+hierarchy -top dff_rose02_miter
+sat -seq 20 -set-init-undef -prove-asserts -verify dff_rose02_miter
+
+design -reset
+read_slang <<EOF
+module dff_fell02_gate(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= $fell(d);
+	end
+endmodule
+EOF
+
+read_slang <<EOF
+module dff_fell02_gold(input logic clk, input logic d, output logic q);
+	always_ff @(posedge clk) begin
+		q <= !($past(d) === 1'b0) && (d === 1'b0);
+	end
+endmodule
+EOF
+
+async2sync
+miter -equiv -make_assert -flatten dff_fell02_gold dff_fell02_gate dff_fell02_miter
+hierarchy -top dff_fell02_miter
+sat -seq 20 -set-init-undef -prove-asserts -verify dff_fell02_miter
+
+design -reset
+read_slang <<EOF
 module dff_stable01_gate(input logic clk, input logic d, output logic q);
 	always_ff @(posedge clk) begin
 		q <= $stable(d);
