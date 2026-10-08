@@ -3449,12 +3449,11 @@ bool is_special_net_type(const ast::NetType &type)
 		case ast::NetType::TriAnd:
 		case ast::NetType::TriOr:
 			return true;
-		case ast::NetType::Wire:
-		case ast::NetType::Tri:
-		case ast::NetType::UWire:
-			return false;
 		default:
-			assert_invariant(false && "unreachable");
+			// Everything else is treated as an ordinary wire here. Net kinds
+			// that are not supported are reported by add_internal_wires();
+			// asserting here would preempt that diagnostic.
+			return false;
 	}
 }
 

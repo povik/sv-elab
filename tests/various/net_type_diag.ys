@@ -1,0 +1,30 @@
+# Unsupported net kinds must be reported through the NetTypeUnsupported
+# diagnostic rather than aborting in is_special_net_type().
+design -reset
+test_slangdiag -expect "net type 'tri0' unsupported"
+read_slang <<EOF
+module top(output logic q);
+	tri0 t;
+	assign t = 1'b1;
+	assign q = t;
+endmodule
+EOF
+
+design -reset
+test_slangdiag -expect "net type 'supply0' unsupported"
+read_slang <<EOF
+module top(output logic q);
+	supply0 t;
+	assign q = t;
+endmodule
+EOF
+
+design -reset
+test_slangdiag -expect "net type 'trireg' unsupported"
+read_slang <<EOF
+module top(output logic q);
+	trireg t;
+	assign t = 1'b1;
+	assign q = t;
+endmodule
+EOF
