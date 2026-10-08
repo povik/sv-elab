@@ -439,10 +439,14 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 
 void ProceduralContext::assign_rvalue(const ast::AssignmentExpression &assign, ir::Value rvalue)
 {
+	assign_rvalue(assign, std::move(rvalue), !assign.isNonBlocking());
+}
+
+void ProceduralContext::assign_rvalue(const ast::AssignmentExpression &assign, ir::Value rvalue, bool blocking)
+{
 	if (assign.timingControl && !netlist.settings.ignore_timing.value_or(false))
 		netlist.add_diag(diag::GenericTimingUnsyn, assign.timingControl->sourceRange);
 
-	bool blocking = !assign.isNonBlocking();
 	const ast::Expression *raw_lexpr = &assign.left();
 
 	if (raw_lexpr->kind == ast::ExpressionKind::Streaming) {
@@ -472,7 +476,8 @@ void ProceduralContext::assign_rvalue(const ast::AssignmentExpression &assign, i
 			ir::Value relem = rvalue.extract(nbits_remaining - relem_width, relem_width);
 			nbits_remaining -= relem_width;
 
-			assign_rvalue(inner_assign, eval.apply_nested_conversion(inner_assign.right(), relem));
+			assign_rvalue(inner_assign, eval.apply_nested_conversion(inner_assign.right(), relem),
+					blocking);
 		}
 
 		assert_invariant(nbits_remaining == 0);

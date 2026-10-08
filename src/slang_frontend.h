@@ -353,6 +353,7 @@ public:
 	void do_simple_assign(slang::SourceLocation loc, VariableBits lvalue, ir::Value rvalue, bool blocking);
 	ir::Value substitute_rvalue(VariableBits bits);
 	void assign_rvalue(const ast::AssignmentExpression &assign, ir::Value rvalue);
+	void assign_rvalue(const ast::AssignmentExpression &assign, ir::Value rvalue, bool blocking);
 
 public:
 	struct EscapeFrame {

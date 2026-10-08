@@ -70,3 +70,16 @@ endmodule
 EOF
 chformal -lower
 sat -show-all -verify -enable_undef -prove-asserts
+
+# A nonblocking assignment to an assignment pattern (e.g. '{a, b} <= v)
+# must be treated as nonblocking, so a later nonblocking assignment is not
+# flagged as occurring "after previous blocking assignment".
+design -reset
+read_slang <<EOF
+module top(input logic clk, input logic [1:0] v, output logic [1:0] a, output logic [1:0] b);
+  always_ff @(posedge clk) begin
+    '{a, b} <= v;
+    a <= a;
+  end
+endmodule
+EOF
