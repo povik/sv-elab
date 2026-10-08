@@ -1,0 +1,45 @@
+design -reset
+read_slang --no-implicit-memories <<EOF
+module top();
+	(* rom_block *)
+	reg [7:0] mem [0:3];
+
+	initial begin
+		{mem[1][3:0], mem[2], mem[3][7:4]} = 16'hA5C3;
+	end
+
+	always_comb begin
+		assert(mem[3][7:4] === 4'h3);
+		assert(mem[2] === 8'h5C);
+		assert(mem[1][3:0] === 4'hA);
+	end
+endmodule
+EOF
+select -assert-count 3 t:$meminit_v2
+chformal -lower
+memory_collect
+memory_map
+sat -verify -enable_undef -prove-asserts
+
+design -reset
+read_slang --no-implicit-memories <<EOF
+module top();
+	(* rom_block *)
+	reg [7:0] mem [3:0];
+
+	initial begin
+		{mem[2][3:0], mem[1], mem[0][7:4]} = 16'hA5C3;
+	end
+
+	always_comb begin
+		assert(mem[0][7:4] === 4'h3);
+		assert(mem[1] === 8'h5C);
+		assert(mem[2][3:0] === 4'hA);
+	end
+endmodule
+EOF
+select -assert-count 3 t:$meminit_v2
+chformal -lower
+memory_collect
+memory_map
+sat -verify -enable_undef -prove-asserts

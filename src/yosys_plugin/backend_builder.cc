@@ -549,11 +549,12 @@ void BackendGraphBuilder::add_memory_init(
 		uint64_t length = data.size() - processed;
 		log_assert(length < uint64_t(width));
 		Const data1, mask1;
-		data1.append(data.extract(0, length));
+		data1.append(data.extract(processed, length));
 		data1.append(Const(Sx, width - length));
 		mask1.append(Const(S1, length));
 		mask1.append(Const(S0, width - length));
-		emit_meminit_cell(rtlil_memory, bit_offset / width, big_endian, data1, mask1);
+		emit_meminit_cell(rtlil_memory, (bit_offset + processed) / width, big_endian,
+				data1, mask1);
 		processed += length;
 	}
 

@@ -63,6 +63,7 @@ set(ALL_TESTS
     various/issue50.ys
     various/mem_inference.ys
     various/meminit.ys
+    various/meminit_partial.ys
     various/net_type_diag.ys
     various/pragmas.ys
     various/readmem.ys
