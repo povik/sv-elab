@@ -640,6 +640,13 @@ public:
 		auto subroutine = std::get<0>(call.subroutine);
 		auto arg_symbols = subroutine->getArguments();
 
+		// Elaborating a call expands the callee body inline. A call that
+		// cannot be resolved to a constant (e.g. recursion on a signal
+		// argument) would expand forever and overflow the stack, so bound
+		// the nesting depth.
+		if (!unroll_limit.enter_call(*subroutine, call.sourceRange))
+			return ir::Value(ir::Sx, call.type->getBitstreamWidth());
+
 		std::vector<ir::Value> arg_in, arg_out;
 
 		for (int i = 0; i < (int)arg_symbols.size(); i++) {
@@ -698,6 +705,7 @@ public:
 				context.assign_rvalue(arg->as<ast::AssignmentExpression>(), arg_out[i]);
 		}
 
+		unroll_limit.exit_call();
 		return ret;
 	}
 

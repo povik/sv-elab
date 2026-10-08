@@ -139,6 +139,8 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 				"Ignore assertions and formal statements in input");
 	cmdLine.add("--unroll-limit", unroll_limit_,
 				"Set unrolling limit (default: 4000)", "<limit>");
+	cmdLine.add("--call-depth-limit", call_depth_limit_,
+				"Set function/task call depth limit (default: 100)", "<limit>");
 	cmdLine.add("--no-implicit-memories", no_implicit_memories,
 				"Disable implicit memory inference. Without this option used, all variables with at least one unpacked dimension "
 				"are candidates for memory inference. With this option used, inference will be restricted to those variables annotated "

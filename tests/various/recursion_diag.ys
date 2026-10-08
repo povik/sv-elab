@@ -1,0 +1,16 @@
+# Recursion that cannot be resolved to a constant (here recursing on a
+# signal argument) must hit the call depth limit, not overflow the stack.
+design -reset
+test_slangdiag -expect "call stack limit of 100 reached [--call-depth-limit=]"
+read_slang <<EOF
+module top(input logic [3:0] n, output logic [7:0] q);
+	function automatic [7:0] f(input logic [3:0] arg);
+		logic [7:0] acc;
+		if (arg == 0)
+			return 8'd1;
+		acc = f(arg - 1) + 8'd1;
+		return acc;
+	endfunction
+	assign q = f(n);
+endmodule
+EOF

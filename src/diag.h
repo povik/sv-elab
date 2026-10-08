@@ -68,6 +68,8 @@ extern slang::DiagCode NetTypeUnsupported;
 extern slang::DiagCode RefUnsupported;
 extern slang::DiagCode InlinedInOutUnsupported;
 extern slang::DiagCode PastGatingClockingUnsupported;
+extern slang::DiagCode CallDepthLimitReached;
+extern slang::DiagCode NoteCallChain;
 extern slang::DiagCode SystemFunctionRequireClockedBlock;
 extern slang::DiagCode UnsupportedBitConversion;
 extern slang::DiagCode MultiPortConversion;

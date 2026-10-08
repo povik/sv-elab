@@ -16,9 +16,11 @@
 #include "slang/ast/symbols/SubroutineSymbols.h"
 #include "slang/ast/symbols/VariableSymbols.h"
 #include "slang/ast/types/Type.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "backend_builder.h"
 #ifndef SLANG_NO_YOSYS
@@ -107,7 +109,8 @@ RegisterEscapeConstructGuard::~RegisterEscapeConstructGuard()
 }
 
 ProceduralContext::ProceduralContext(NetlistContext &netlist, ProcessTiming &timing)
-	: unroll_limit(netlist, netlist.settings.unroll_limit()), netlist(netlist), timing(timing),
+	: unroll_limit(netlist, netlist.settings.unroll_limit(), netlist.settings.call_depth_limit()),
+	  netlist(netlist), timing(timing),
 	  eval(*this)
 {
 #ifndef SLANG_MUX_LOWERING
@@ -498,8 +501,8 @@ Variable ProceduralContext::get_disable_flag()
 		return escape_stack.back().flag;
 }
 
-UnrollLimitTracking::UnrollLimitTracking(NetlistContext &netlist, int limit)
-	: netlist(netlist), limit(limit)
+UnrollLimitTracking::UnrollLimitTracking(NetlistContext &netlist, int limit, int call_depth_limit)
+	: netlist(netlist), limit(limit), call_depth_limit(call_depth_limit)
 {}
 
 UnrollLimitTracking::~UnrollLimitTracking()
@@ -542,6 +545,45 @@ bool UnrollLimitTracking::unroll_tick(const ast::Statement *symbol)
 	}
 
 	return true;
+}
+
+bool UnrollLimitTracking::enter_call(const ast::SubroutineSymbol &subroutine,
+		slang::SourceRange range)
+{
+	if (call_error_issued)
+		return false;
+
+	if (call_depth >= call_depth_limit) {
+		auto &diag = netlist.add_diag(diag::CallDepthLimitReached, range)
+				<< call_depth_limit;
+
+		// Report the (partial) call stack we got here through, innermost
+		// first. Collapse repeated call sites so that direct recursion
+		// does not flood the diagnostic with identical notes.
+		std::vector<slang::SourceRange> seen;
+		for (auto it = active_calls.rbegin(); it != active_calls.rend(); it++) {
+			if (it->range == range
+					|| std::find(seen.begin(), seen.end(), it->range) != seen.end())
+				continue;
+			seen.push_back(it->range);
+			diag.addNote(diag::NoteCallChain, it->range) << it->subroutine->name;
+		}
+
+		call_error_issued = true;
+		return false;
+	}
+
+	active_calls.push_back({&subroutine, range});
+	call_depth++;
+	return true;
+}
+
+void UnrollLimitTracking::exit_call()
+{
+	assert_invariant(call_depth > 0);
+	active_calls.pop_back();
+	if (--call_depth == 0)
+		call_error_issued = false;
 }
 
 }; // namespace slang_frontend

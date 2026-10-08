@@ -257,19 +257,30 @@ private:
 
 class UnrollLimitTracking {
 public:
-	UnrollLimitTracking(NetlistContext &netlist, int limit);
+	UnrollLimitTracking(NetlistContext &netlist, int limit, int call_depth_limit);
 	~UnrollLimitTracking();
 	void enter_unrolling();
 	void exit_unrolling();
 	bool unroll_tick(const ast::Statement *symbol);
+	bool enter_call(const ast::SubroutineSymbol &subroutine, slang::SourceRange range);
+	void exit_call();
 
 private:
+	struct ActiveCall {
+		const ast::SubroutineSymbol *subroutine;
+		slang::SourceRange range;
+	};
+
 	NetlistContext &netlist;
 	int limit;
+	int call_depth_limit;
 	int unrolling = 0;
 	int unroll_counter = 0;
+	int call_depth = 0;
+	std::vector<ActiveCall> active_calls;
 	hashlib::pool<const ast::Statement *> loops;
 	bool error_issued = false;
+	bool call_error_issued = false;
 };
 
 struct ProcessTiming {
@@ -622,6 +633,7 @@ struct SynthesisSettings {
 	std::optional<bool> ignore_initial;
 	std::optional<bool> ignore_assertions;
 	std::optional<int> unroll_limit_;
+	std::optional<int> call_depth_limit_;
 	std::optional<bool> extern_modules;
 	std::optional<bool> no_implicit_memories;
 	std::optional<bool> empty_blackboxes;
@@ -652,6 +664,10 @@ struct SynthesisSettings {
 
 	int unroll_limit() {
 		return unroll_limit_.value_or(4000);
+	}
+
+	int call_depth_limit() {
+		return call_depth_limit_.value_or(100);
 	}
 
 	void addOptions(slang::CommandLine &cmdLine);

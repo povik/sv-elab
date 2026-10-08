@@ -147,6 +147,8 @@ DiagCode SpecifyRuleUnsupported(DiagSubsystem::Netlist, 1094);
 DiagCode SpecifyRuleArgumentsUnsupported(DiagSubsystem::Netlist, 1095);
 DiagCode SpecifyRuleMissingArgument(DiagSubsystem::Netlist, 1096);
 DiagCode SpecifyRuleEdgeUnsupported(DiagSubsystem::Netlist, 1097);
+DiagCode CallDepthLimitReached(DiagSubsystem::Netlist, 1098);
+DiagCode NoteCallChain(DiagSubsystem::Netlist, 1099);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -312,6 +314,12 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(PastGatingClockingUnsupported, "$past gating_expr (3rd argument) and clocking_event (4th argument) are not supported");
 	engine.setSeverity(PastGatingClockingUnsupported, DiagnosticSeverity::Error);
+
+	engine.setMessage(CallDepthLimitReached, "call stack limit of {} reached [--call-depth-limit=]");
+	engine.setSeverity(CallDepthLimitReached, DiagnosticSeverity::Error);
+
+	engine.setMessage(NoteCallChain, "call to '{}' is part of the call chain");
+	engine.setSeverity(NoteCallChain, DiagnosticSeverity::Note);
 
 	engine.setMessage(SystemFunctionRequireClockedBlock, "system function '{}' can only be called within a clocked procedural block with explicit timing");
 	engine.setSeverity(SystemFunctionRequireClockedBlock, DiagnosticSeverity::Error);
