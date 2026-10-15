@@ -530,6 +530,9 @@ void VariableState::set(VariableBits lhs, ir::Value value)
 	for (uint64_t i = 0; i < lhs.bitwidth(); i++) {
 		VariableBit bit = lhs[i];
 
+		if (visible_assignments.count(bit) && visible_assignments.at(bit) == value[i])
+			continue;
+
 		if (!pending.revert.count(bit) && !pending.revert_erase.count(bit)) {
 			if (visible_assignments.count(bit))
 				pending.revert[bit] = visible_assignments.at(bit);
