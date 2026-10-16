@@ -1957,8 +1957,15 @@ public:
 			sync_branch.copy_case_tree_into(proc->root_case);
 #endif
 
-			// FIXME: ignores variables not driven from the sync procedure
 			VariableBits driven = sync_branch.all_driven();
+			// A variable assigned only in the asynchronous load branch holds its value
+			// on the clock edge
+			if (aloads.size() == 1) {
+				for (auto pair : aloads[0].values.visible_assignments)
+					if (pair.first.variable.kind == Variable::Static)
+						driven.append(pair.first);
+				driven.sort_and_unify();
+			}
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
 				ir::Value assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
