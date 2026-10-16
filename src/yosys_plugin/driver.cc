@@ -72,6 +72,25 @@ template <typename T> std::string format_src(const slang::SourceManager *sm, con
 	return format_src(sm, source_location(obj));
 }
 
+RTLIL::Const make_src(NetlistContext &netlist, slang::SourceRange source_range)
+{
+	return RTLIL::Const(format_src(netlist.compilation.getSourceManager(), source_range));
+}
+
+RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
+{
+	std::string joined;
+	for (auto loc : locs) {
+		auto src = format_src(netlist.compilation.getSourceManager(), slang::SourceRange(loc, loc));
+		if (src.empty())
+			continue;
+		if (!joined.empty())
+			joined += '|';
+		joined += src;
+	}
+	return RTLIL::Const(joined);
+}
+
 static std::string rtlil_id(const std::string_view &view)
 {
 	return RTLIL::escape_id(std::string(view));

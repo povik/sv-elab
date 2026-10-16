@@ -115,6 +115,27 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 
 using SyncAction = decltype(RTLIL::CaseRule::actions)::value_type;
 
+template <typename Action = SyncAction>
+Action make_action(RTLIL::SigSpec lhs, RTLIL::SigSpec rhs, [[maybe_unused]] RTLIL::Const src)
+{
+	if constexpr (std::is_same_v<Action, RTLIL::SigSig>)
+		return {std::move(lhs), std::move(rhs)};
+	else
+		return {std::move(lhs), std::move(rhs), std::move(src)};
+}
+
+template <typename Rule> void assign_compare_src(Rule *rule, [[maybe_unused]] RTLIL::Const src)
+{
+	if constexpr (requires(Rule &r) { r.compare_src; })
+		rule->compare_src = std::move(src);
+}
+
+template <typename Rule> void assign_signal_src(Rule *rule, [[maybe_unused]] RTLIL::Const src)
+{
+	if constexpr (requires(Rule &r) { r.signal_src; })
+		rule->signal_src = std::move(src);
+}
+
 #else // SLANG_NO_YOSYS
 
 // Used for failed internal invariants
@@ -796,6 +817,8 @@ ir::Value inside_comparison(EvalContext &eval, ir::Value left, const ast::Expres
 extern std::string hierpath_relative_to(const ast::Scope *relative_to, const ast::Scope *scope);
 std::string format_src(const slang::SourceManager *sm, slang::SourceRange source_range);
 #ifndef SLANG_NO_YOSYS
+RTLIL::Const make_src(NetlistContext &netlist, slang::SourceRange source_range);
+RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs);
 void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, RTLIL::AttrObject *to);
