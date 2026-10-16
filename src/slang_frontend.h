@@ -76,6 +76,7 @@ class WritePort {};
 };
 
 namespace slang_frontend {
+constexpr std::string_view BLACKBOX_LIBRARY = "TARGET_BLACKBOX_SV_ELAB";
 
 #ifndef SLANG_NO_YOSYS
 
