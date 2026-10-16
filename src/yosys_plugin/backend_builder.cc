@@ -35,11 +35,10 @@ std::pair<std::string, ir::Value> BackendGraphBuilder::add_y_wire(int width)
 void BackendGraphBuilder::bless_object(RTLIL::AttrObject *object)
 {
 	object->attributes = staged_attributes;
-	if (staged_source_range_valid && !object->attributes.count(ID::src)) {
-		auto src = format_src(source_mgr, staged_source_range);
-		if (!src.empty())
-			object->attributes[ID::src] = src;
-	}
+	if (!staged_src.empty())
+		assign_src(object, make_src(canvas, staged_src));
+	else if (staged_source_range_valid)
+		assign_src(object, make_src(canvas, format_src(source_mgr, staged_source_range)));
 }
 
 ir::Value BackendGraphBuilder::Demux(ir::Value a, ir::Value s)

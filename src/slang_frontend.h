@@ -113,6 +113,34 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 }
 #endif
 
+#if __has_include("kernel/srcpool.h")
+using SrcHandle = Yosys::SrcRef;
+
+inline SrcHandle make_src(RTLIL::Module *owner, std::string_view src)
+{
+	return src.empty() ? SrcHandle() : owner->srcs().add(src);
+}
+
+inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
+{
+	if (src != SrcHandle::Null)
+		obj->set_src(src);
+}
+#else
+using SrcHandle = RTLIL::Const;
+
+inline SrcHandle make_src(RTLIL::Module *, std::string_view src)
+{
+	return RTLIL::Const(std::string(src));
+}
+
+inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
+{
+	if (src.size())
+		obj->attributes[ID::src] = std::move(src);
+}
+#endif
+
 #else // SLANG_NO_YOSYS
 
 // Used for failed internal invariants
@@ -793,8 +821,8 @@ ir::Value inside_comparison(EvalContext &eval, ir::Value left, const ast::Expres
 extern std::string hierpath_relative_to(const ast::Scope *relative_to, const ast::Scope *scope);
 std::string format_src(const slang::SourceManager *sm, slang::SourceRange source_range);
 #ifndef SLANG_NO_YOSYS
-RTLIL::Const make_src(NetlistContext &netlist, slang::SourceRange source_range);
-RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs);
+SrcHandle make_src(NetlistContext &netlist, slang::SourceRange source_range);
+SrcHandle make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs);
 void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, RTLIL::AttrObject *to);
