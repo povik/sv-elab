@@ -135,7 +135,7 @@ struct Case
 		for (auto &action : actions) {
 			VariableBits lvalue;
 			ir::Value enables, lstaging, rvalue;
-			RTLIL::Const src = make_src(netlist, {action.loc});
+			SrcHandle src = make_src(netlist, {action.loc});
 
 			for (uint64_t i = 0; i < action.lvalue.bitwidth(); i++) {
 				VariableBit lbit = action.lvalue[i];
