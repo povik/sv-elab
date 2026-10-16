@@ -88,12 +88,13 @@ template <typename T> std::string format_src(const slang::SourceManager *sm, con
 	return format_src(sm, source_location(obj));
 }
 
-RTLIL::Const make_src(NetlistContext &netlist, slang::SourceRange source_range)
+SrcHandle make_src(NetlistContext &netlist, slang::SourceRange source_range)
 {
-	return RTLIL::Const(format_src(netlist.compilation.getSourceManager(), source_range));
+	return make_src(netlist.backend->canvas,
+			format_src(netlist.compilation.getSourceManager(), source_range));
 }
 
-RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
+SrcHandle make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
 {
 	std::string joined;
 	for (auto loc : locs) {
@@ -104,7 +105,7 @@ RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLo
 			joined += '|';
 		joined += src;
 	}
-	return RTLIL::Const(joined);
+	return make_src(netlist.backend->canvas, joined);
 }
 
 static std::string rtlil_id(const std::string_view &view)
@@ -207,14 +208,17 @@ std::optional<RTLIL::Const> convert_attr_value(
 template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTLIL::AttrObject *to)
 {
 	auto src = format_src(netlist.compilation.getSourceManager(), from);
-	if (!src.empty())
-		to->attributes[ID::src] = src;
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
+			if (attr->name == "src")
+				src = value->decode_string();
+			else
+				to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
 		}
 	}
+
+	assign_src(to, make_src(netlist.backend->canvas, src));
 }
 template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, AttributeGuard &guard)
 {
@@ -222,7 +226,10 @@ template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, Att
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
+			if (attr->name == "src")
+				guard.set_src(value->decode_string());
+			else
+				guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
 		}
 	}
 }
