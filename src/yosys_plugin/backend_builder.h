@@ -24,7 +24,7 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 	// cell; many expression leaves never need an `src` string.
 	slang::SourceRange staged_source_range;
 	bool staged_source_range_valid = false;
-	std::string staged_src;
+	std::optional<SrcHandle> staged_src;
 
 	unsigned next_id = 0;
 	std::string new_id(std::string base = std::string());
@@ -98,7 +98,7 @@ public:
 		save_source_range = builder.staged_source_range;
 		save_source_range_valid = builder.staged_source_range_valid;
 		builder.staged_source_range_valid = false;
-		save_src.swap(builder.staged_src);
+		std::swap(save_src, builder.staged_src);
 	}
 
 	~AttributeGuard()
@@ -106,17 +106,18 @@ public:
 		save.swap(builder.staged_attributes);
 		builder.staged_source_range = save_source_range;
 		builder.staged_source_range_valid = save_source_range_valid;
-		save_src.swap(builder.staged_src);
+		std::swap(save_src, builder.staged_src);
 	}
 
 	void set(RTLIL::IdString id, RTLIL::Const value) { builder.staged_attributes[id] = value; }
 
-	void set_src(std::string src) { builder.staged_src = std::move(src); }
+	void set_src(std::string_view src) { builder.staged_src = make_src(builder.canvas, src); }
 
 	void set_source(slang::SourceRange source_range)
 	{
 		builder.staged_source_range = source_range;
 		builder.staged_source_range_valid = true;
+		builder.staged_src.reset();
 	}
 
 private:
@@ -124,7 +125,7 @@ private:
 	Yosys::dict<RTLIL::IdString, RTLIL::Const> save;
 	slang::SourceRange save_source_range;
 	bool save_source_range_valid = false;
-	std::string save_src;
+	std::optional<SrcHandle> save_src;
 };
 
 } // namespace slang_frontend
