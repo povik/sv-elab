@@ -38,6 +38,7 @@ struct Switch
 	const ast::Statement *statement = nullptr;
 
 	ir::Value signal;
+	slang::SourceRange signal_range;
 	std::vector<Case *> cases;
 
 	bool full_case = false;
@@ -65,6 +66,7 @@ struct Case
 		ir::Value unmasked_rvalue;
 	};
 	std::vector<ValuePattern> compare;
+	slang::SourceRange compare_range;
 	std::vector<Action> actions;
 	std::vector<Switch *> switches;
 	std::vector<RTLIL::SyncAction> aux_actions;
@@ -91,6 +93,7 @@ struct Case
 
 		for (auto &pat : compare)
 			rule->compare.push_back(lower_pattern(pat));
+		rule->compare_src = make_src(netlist, compare_range);
 		rule->actions.insert(rule->actions.end(), aux_actions.begin(), aux_actions.end());
 
 		std::vector<Switch *>::iterator it, ite;
@@ -124,7 +127,7 @@ struct Case
 	}
 
 	void insert_latch_signaling(
-			DiagnosticIssuer &issuer, hashlib::dict<VariableBit, RTLIL::SigSig> &map)
+			NetlistContext &netlist, hashlib::dict<VariableBit, RTLIL::SigSig> &map)
 	{
 		std::vector<Switch *> prepended_switches;
 		std::set<VariableBit> has_mask_switches;
@@ -132,6 +135,7 @@ struct Case
 		for (auto &action : actions) {
 			VariableBits lvalue;
 			ir::Value enables, lstaging, rvalue;
+			RTLIL::Const src = make_src(netlist, {action.loc});
 
 			for (uint64_t i = 0; i < action.lvalue.bitwidth(); i++) {
 				VariableBit lbit = action.lvalue[i];
@@ -153,24 +157,24 @@ struct Case
 						Case *case_ = sw->add_case({ir::S1});
 						case_->statement = statement;
 						case_->aux_actions.push_back({RTLIL::SigSpec(mapped.second),
-								ir::Value(action.unmasked_rvalue[i])});
+								ir::Value(action.unmasked_rvalue[i]), src});
 						case_->aux_actions.push_back(
-								{RTLIL::SigSpec(mapped.first), RTLIL::SigSpec(RTLIL::S1)});
+								{RTLIL::SigSpec(mapped.first), RTLIL::SigSpec(RTLIL::S1), src});
 						has_mask_switches.insert(lbit);
 					}
 				}
 			}
 
 			if (!lstaging.empty()) {
-				aux_actions.push_back({RTLIL::SigSpec(lstaging), RTLIL::SigSpec(rvalue)});
+				aux_actions.push_back({RTLIL::SigSpec(lstaging), RTLIL::SigSpec(rvalue), src});
 				aux_actions.push_back(
-						{RTLIL::SigSpec(enables), RTLIL::SigSpec(ir::S1, enables.size())});
+						{RTLIL::SigSpec(enables), RTLIL::SigSpec(ir::S1, enables.size()), src});
 			}
 		}
 
 		for (auto switch_ : switches)
 			for (auto case_ : switch_->cases)
-				case_->insert_latch_signaling(issuer, map);
+				case_->insert_latch_signaling(netlist, map);
 
 		switches.insert(switches.begin(), prepended_switches.begin(), prepended_switches.end());
 	}

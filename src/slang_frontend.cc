@@ -1854,9 +1854,9 @@ public:
 			}
 
 			procedure.root_case->aux_actions.push_back(
-						{enables, RTLIL::SigSpec(RTLIL::S0, enables.size())});
+						{enables, RTLIL::SigSpec(RTLIL::S0, enables.size()), {}});
 			procedure.root_case->aux_actions.push_back(
-						{all_staging, RTLIL::SigSpec(RTLIL::Sx, all_staging.size())});
+						{all_staging, RTLIL::SigSpec(RTLIL::Sx, all_staging.size()), {}});
 			procedure.root_case->insert_latch_signaling(netlist, signaling);
 		}
 

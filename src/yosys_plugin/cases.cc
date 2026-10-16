@@ -42,6 +42,7 @@ RTLIL::SwitchRule *Switch::lower(NetlistContext &netlist)
 {
 	RTLIL::SwitchRule *rule = new RTLIL::SwitchRule;
 	rule->signal = signal;
+	rule->signal_src = make_src(netlist, signal_range);
 
 	if (full_case)
 		rule->attributes[ID::full_case] = true;

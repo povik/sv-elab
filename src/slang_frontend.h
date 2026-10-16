@@ -793,6 +793,8 @@ ir::Value inside_comparison(EvalContext &eval, ir::Value left, const ast::Expres
 extern std::string hierpath_relative_to(const ast::Scope *relative_to, const ast::Scope *scope);
 std::string format_src(const slang::SourceManager *sm, slang::SourceRange source_range);
 #ifndef SLANG_NO_YOSYS
+RTLIL::Const make_src(NetlistContext &netlist, slang::SourceRange source_range);
+RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs);
 void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, RTLIL::AttrObject *to);
