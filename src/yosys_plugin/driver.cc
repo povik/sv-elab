@@ -528,12 +528,8 @@ struct SlangFrontend : Frontend
 				log_cmd_error("Bad command\n");
 		}
 
-		fixup_options(settings, driver);
-		if (!driver.processOptions())
-			log_cmd_error("Bad command\n");
-		catch_forbidden_options(driver);
 
-#if YOSYS_NEW_LOGGING
+#if YOSYS_HAS_TARGET_REGISTER
 		if (!synth_target.empty()) {
 			auto target_it = target_register.find(synth_target);
 			if (target_it == target_register.end())
@@ -552,8 +548,15 @@ struct SlangFrontend : Frontend
 				rewrite_filename(file);
 				driver.sourceLoader.addLibraryFiles(BLACKBOX_LIBRARY, file);
 			}
+		} else if (!synth_family.empty()) {
+			log_cmd_error("Target must be specified for family '%s'.\n", synth_family.c_str());
 		}
 #endif
+
+		fixup_options(settings, driver);
+		if (!driver.processOptions())
+			log_cmd_error("Bad command\n");
+		catch_forbidden_options(driver);
 
 		try {
 			if (!driver.parseAllSources())
