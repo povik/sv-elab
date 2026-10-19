@@ -514,6 +514,9 @@ struct SlangFrontend : Frontend
 
 			args.insert(args.begin() + 1, default_options.begin(), default_options.end());
 
+			for (size_t i = 1; i < args.size(); i++)
+				rewrite_filename(args[i]);
+
 			std::vector<std::unique_ptr<char[]>> c_args_guard;
 			std::vector<char *> c_args;
 
