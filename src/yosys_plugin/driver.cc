@@ -34,6 +34,9 @@ slang::ast::Compilation *global_compilation;
 
 slang::SourceRange source_location(const ast::Symbol &obj)
 {
+	if (obj.kind == ast::SymbolKind::ProceduralBlock)
+		return slang::SourceRange(obj.location,
+				obj.as<ast::ProceduralBlockSymbol>().getBody().sourceRange.end());
 	return slang::SourceRange(obj.location, obj.location);
 }
 slang::SourceRange source_location(const ast::Expression &expr)
