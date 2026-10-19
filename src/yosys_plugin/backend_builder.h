@@ -85,6 +85,7 @@ private:
 	std::pair<std::string, ir::Value> add_y_wire(int width);
 	// apply attributes to newly created cell
 	void bless_object(RTLIL::AttrObject *cell);
+	void bless_ff(RTLIL::Cell *cell, const ir::Value &q);
 
 	std::vector<std::unique_ptr<BackendMemory>> memories;
 };
