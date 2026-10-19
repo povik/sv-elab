@@ -126,6 +126,11 @@ inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
 	if (src != SrcHandle::Null)
 		obj->set_src(src);
 }
+
+inline void merge_src(RTLIL::Module *owner, RTLIL::AttrObject *target, const RTLIL::AttrObject *source)
+{
+	owner->design->merge_src(target, source);
+}
 #else
 using SrcHandle = RTLIL::Const;
 
@@ -138,6 +143,11 @@ inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
 {
 	if (src.size())
 		obj->attributes[ID::src] = std::move(src);
+}
+
+inline void merge_src(RTLIL::Module *, RTLIL::AttrObject *target, const RTLIL::AttrObject *source)
+{
+	target->add_strpool_attribute(ID::src, source->get_strpool_attribute(ID::src));
 }
 #endif
 
