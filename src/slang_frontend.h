@@ -113,6 +113,67 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 }
 #endif
 
+#if __has_include("kernel/srcpool.h")
+using SrcHandle = Yosys::SrcRef;
+
+inline SrcHandle make_src(RTLIL::Module *owner, std::string_view src)
+{
+	return src.empty() ? SrcHandle() : owner->srcs().add(src);
+}
+
+inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
+{
+	if (src != SrcHandle::Null)
+		obj->set_src(src);
+}
+
+inline void merge_src(RTLIL::Module *owner, RTLIL::AttrObject *target, const RTLIL::AttrObject *source)
+{
+	owner->design->merge_src(target, source);
+}
+#else
+using SrcHandle = RTLIL::Const;
+
+inline SrcHandle make_src(RTLIL::Module *, std::string_view src)
+{
+	return RTLIL::Const(std::string(src));
+}
+
+inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
+{
+	if (src.size())
+		obj->attributes[ID::src] = std::move(src);
+}
+
+inline void merge_src(RTLIL::Module *, RTLIL::AttrObject *target, const RTLIL::AttrObject *source)
+{
+	target->add_strpool_attribute(ID::src, source->get_strpool_attribute(ID::src));
+}
+#endif
+
+using SyncAction = decltype(RTLIL::CaseRule::actions)::value_type;
+
+template <typename Action = SyncAction>
+Action make_action(RTLIL::SigSpec lhs, RTLIL::SigSpec rhs, [[maybe_unused]] SrcHandle src)
+{
+	if constexpr (std::is_same_v<Action, RTLIL::SigSig>)
+		return {std::move(lhs), std::move(rhs)};
+	else
+		return {std::move(lhs), std::move(rhs), std::move(src)};
+}
+
+template <typename Rule> void assign_compare_src(Rule *rule, [[maybe_unused]] SrcHandle src)
+{
+	if constexpr (requires(Rule &r) { r.compare_src; })
+		rule->compare_src = std::move(src);
+}
+
+template <typename Rule> void assign_signal_src(Rule *rule, [[maybe_unused]] SrcHandle src)
+{
+	if constexpr (requires(Rule &r) { r.signal_src; })
+		rule->signal_src = std::move(src);
+}
+
 #else // SLANG_NO_YOSYS
 
 // Used for failed internal invariants
@@ -794,6 +855,8 @@ ir::Value inside_comparison(EvalContext &eval, ir::Value left, const ast::Expres
 extern std::string hierpath_relative_to(const ast::Scope *relative_to, const ast::Scope *scope);
 std::string format_src(const slang::SourceManager *sm, slang::SourceRange source_range);
 #ifndef SLANG_NO_YOSYS
+SrcHandle make_src(NetlistContext &netlist, slang::SourceRange source_range);
+SrcHandle make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs);
 void transfer_attrs(NetlistContext &netlist, const ast::Symbol &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Statement &from, RTLIL::AttrObject *to);
 void transfer_attrs(NetlistContext &netlist, const ast::Expression &from, RTLIL::AttrObject *to);
