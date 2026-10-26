@@ -6,9 +6,9 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 # Bump when the submodule is updated. SLANG_VERSION_PATCH/HASH are
 # normally derived from `git describe`
 SLANG_VERSION_MAJOR = 12
-SLANG_VERSION_MINOR = 0
+SLANG_VERSION_MINOR = 1
 SLANG_VERSION_PATCH = 0
-SLANG_VERSION_HASH = "545f88b2ed3a2d20325fbd17413af177a6bca72f"
+SLANG_VERSION_HASH = "42710c788ce76cd08ce2080773e0b8286c428a05"
 
 def _vendored_slang_extension_impl(ctx):
     git_repository(
