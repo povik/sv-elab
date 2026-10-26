@@ -225,10 +225,11 @@ ir::Value AddressingResolver::raw_demux(ir::Value val, int64_t from, int64_t to)
 		ir::Value sel = sign_extend(raw_signal, sel_size);
 
 		// check `raw_signal` is in between -2**sel_size...0
-		// which is where the demuxing is valid
-		ir::Net valid = netlist.LogicAnd(
-				netlist.Ge(raw_signal, {ir::S1, ir::Value(ir::S0, sel_size)}, true),
-				netlist.Lt(raw_signal, {ir::S0}, true));
+		// which is where the demuxing is valid. One statement each, as the
+		// evaluation order of function arguments is unspecified
+		ir::Net above = netlist.Ge(raw_signal, {ir::S1, ir::Value(ir::S0, sel_size)}, true);
+		ir::Net below = netlist.Lt(raw_signal, {ir::S0}, true);
+		ir::Net valid = netlist.LogicAnd(above, below);
 
 		ir::Value val_gated = netlist.Mux(ir::Value(ir::S0, stride), val, valid);
 
@@ -244,9 +245,11 @@ ir::Value AddressingResolver::raw_demux(ir::Value val, int64_t from, int64_t to)
 		ir::Value sel = sign_extend(raw_signal, sel_size);
 
 		// check `raw_signal` is in between 0...2**sel_size
-		// which is where the demuxing is valid
-		ir::Net valid = netlist.LogicAnd(netlist.Ge(raw_signal, {ir::S0}, true),
-				netlist.Lt(raw_signal, {ir::S0, ir::S1, ir::Value(ir::S0, sel_size)}, true));
+		// which is where the demuxing is valid. One statement each, as the
+		// evaluation order of function arguments is unspecified
+		ir::Net above = netlist.Ge(raw_signal, {ir::S0}, true);
+		ir::Net below = netlist.Lt(raw_signal, {ir::S0, ir::S1, ir::Value(ir::S0, sel_size)}, true);
+		ir::Net valid = netlist.LogicAnd(above, below);
 
 		ir::Value val_gated = netlist.Mux(ir::Value(ir::S0, stride), val, valid);
 

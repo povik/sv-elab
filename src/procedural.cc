@@ -388,9 +388,10 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 					rvalue.repeat(range_sel->resolver->range.width()),
 					range_sel->resolver->demux(mask, range_sel->inner->bitsize), blocking);
 		} else {
-			assign_to_lvalue_with_masking(assign, context, *range_sel->inner,
-					range_sel->resolver->shift_up(rvalue, true, range_sel->inner->bitsize),
-					range_sel->resolver->shift_up(mask, false, range_sel->inner->bitsize),
+			// One statement each, as the evaluation order of function arguments is unspecified
+			ir::Value shifted_rvalue = range_sel->resolver->shift_up(rvalue, true, range_sel->inner->bitsize);
+			ir::Value shifted_mask = range_sel->resolver->shift_up(mask, false, range_sel->inner->bitsize);
+			assign_to_lvalue_with_masking(assign, context, *range_sel->inner, shifted_rvalue, shifted_mask,
 					blocking);
 		}
 	} else if (auto member_acc = std::get_if<LValue::MemberAccess>(&lvalue.descriptor)) {
