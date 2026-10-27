@@ -196,10 +196,9 @@ template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTL
 			if (attr->name == "src")
 				src = value->decode_string();
 			else
-				to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
+				set_imported_attribute(netlist.backend->canvas->design, to, intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
 		}
 	}
-	import_metadata(netlist.backend->canvas->design, to);
 
 	assign_src(to, make_src(netlist.backend->canvas, src));
 }

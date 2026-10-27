@@ -28,6 +28,9 @@
 #ifndef SLANG_NO_YOSYS
 #include "kernel/rtlil.h"
 #include "kernel/log.h"
+#if __has_include("frontends/common/attributes.h")
+#include "frontends/common/attributes.h"
+#endif
 #endif
 
 namespace slang_frontend {
@@ -182,11 +185,27 @@ template <typename Rule> void assign_signal_src(Rule *rule, [[maybe_unused]] Src
 		rule->signal_src = std::move(src);
 }
 
-template <typename Design> void import_metadata(Design *design, RTLIL::AttrObject *obj)
+#if __has_include("frontends/common/attributes.h")
+inline void set_imported_attribute(RTLIL::Design *design, RTLIL::AttrObject *obj, RTLIL::IdString id, const RTLIL::Const &value)
 {
-	if constexpr (requires(Design &d) { d.import_metadata_attributes(obj); })
-		design->import_metadata_attributes(obj);
+	Yosys::import_attribute(design, obj, id, value);
 }
+
+inline void set_imported_attributes(RTLIL::Design *design, RTLIL::AttrObject *obj, const Yosys::dict<RTLIL::IdString, RTLIL::Const> &attributes)
+{
+	Yosys::import_attributes(design, obj, attributes);
+}
+#else
+inline void set_imported_attribute(RTLIL::Design *, RTLIL::AttrObject *obj, RTLIL::IdString id, const RTLIL::Const &value)
+{
+	obj->attributes[id] = value;
+}
+
+inline void set_imported_attributes(RTLIL::Design *, RTLIL::AttrObject *obj, const Yosys::dict<RTLIL::IdString, RTLIL::Const> &attributes)
+{
+	obj->attributes = attributes;
+}
+#endif
 
 template <typename Design> void set_hdlname(Design *design, RTLIL::AttrObject *obj, const std::string &hdlname)
 {
