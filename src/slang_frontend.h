@@ -118,7 +118,7 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 }
 #endif
 
-#if __has_include("kernel/srcpool.h")
+#if __has_include("kernel/metadata/srcpool.h") || __has_include("kernel/srcpool.h")
 using SrcHandle = Yosys::SrcRef;
 
 inline SrcHandle make_src(RTLIL::Module *owner, std::string_view src)
