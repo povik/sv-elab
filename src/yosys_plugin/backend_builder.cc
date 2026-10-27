@@ -35,6 +35,7 @@ std::pair<std::string, ir::Value> BackendGraphBuilder::add_y_wire(int width)
 void BackendGraphBuilder::bless_object(RTLIL::AttrObject *object)
 {
 	object->attributes = staged_attributes;
+	import_metadata(canvas->design, object);
 	if (!staged_src && staged_source_range_valid)
 		staged_src = make_src(canvas, format_src(source_mgr, staged_source_range));
 	if (staged_src)

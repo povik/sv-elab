@@ -2480,7 +2480,7 @@ public:
 
 #ifndef SLANG_NO_YOSYS
 			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), RTLIL::escape_id(module_type_id(*ref_body)));
-			cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
+			set_hdlname(cell->module->design, cell, netlist.hdlname(sym));
 			for (auto *conn : sym.getPortConnections()) {
 				slang::SourceLocation loc;
 				if (auto expr = conn->getExpression())
@@ -2942,7 +2942,7 @@ public:
 			{
 				if (settings.udp_handling.has_value() && *settings.udp_handling == UdpHandleMode::blackboxes) {
 					RTLIL::Cell *cell = netlist.backend->canvas->addCell(id, RTLIL::escape_id(std::string(sym.primitiveType.name)));
-					cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
+					set_hdlname(cell->module->design, cell, netlist.hdlname(sym));
 					transfer_attrs(netlist, sym, cell);
 					const auto& ports = sym.primitiveType.ports;
 
