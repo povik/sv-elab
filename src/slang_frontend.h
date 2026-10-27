@@ -184,6 +184,20 @@ template <typename Rule> void assign_signal_src(Rule *rule, [[maybe_unused]] Src
 		rule->signal_src = std::move(src);
 }
 
+template <typename Design> void import_metadata(Design *design, RTLIL::AttrObject *obj)
+{
+	if constexpr (requires(Design &d) { d.import_metadata_attributes(obj); })
+		design->import_metadata_attributes(obj);
+}
+
+template <typename Design> void set_hdlname(Design *design, RTLIL::AttrObject *obj, const std::string &hdlname)
+{
+	if constexpr (requires(Design &d) { d.set_hdlname(obj, hdlname); })
+		design->set_hdlname(obj, hdlname);
+	else
+		obj->set_string_attribute(ID::hdlname, hdlname);
+}
+
 #else // SLANG_NO_YOSYS
 
 // Used for failed internal invariants

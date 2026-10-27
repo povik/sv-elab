@@ -222,6 +222,7 @@ template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTL
 				to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
 		}
 	}
+	import_metadata(netlist.backend->canvas->design, to);
 
 	assign_src(to, make_src(netlist.backend->canvas, src));
 }
