@@ -127,9 +127,17 @@ inline void assign_src(RTLIL::AttrObject *obj, SrcHandle src)
 		obj->set_src(src);
 }
 
+template <typename Design> void absorb_into(Design *design, RTLIL::AttrObject *target, const RTLIL::AttrObject *source)
+{
+	if constexpr (requires(Design &d) { d.absorb_metadata(target, source); })
+		design->absorb_metadata(target, source);
+	else
+		design->merge_src(target, source);
+}
+
 inline void merge_src(RTLIL::Module *owner, RTLIL::AttrObject *target, const RTLIL::AttrObject *source)
 {
-	owner->design->merge_src(target, source);
+	absorb_into(owner->design, target, source);
 }
 #else
 using SrcHandle = RTLIL::Const;
