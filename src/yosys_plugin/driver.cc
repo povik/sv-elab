@@ -34,6 +34,11 @@ slang::ast::Compilation *global_compilation;
 
 slang::SourceRange source_location(const ast::Symbol &obj)
 {
+	if (obj.kind == ast::SymbolKind::ProceduralBlock)
+		return slang::SourceRange(obj.location,
+				obj.as<ast::ProceduralBlockSymbol>().getBody().sourceRange.end());
+	if (ast::ValueSymbol::isKind(obj.kind) && !obj.name.empty())
+		return slang::SourceRange(obj.location, obj.location + obj.name.size());
 	return slang::SourceRange(obj.location, obj.location);
 }
 slang::SourceRange source_location(const ast::Expression &expr)
@@ -70,6 +75,26 @@ std::string format_src(const slang::SourceManager *sm, slang::SourceRange sr)
 template <typename T> std::string format_src(const slang::SourceManager *sm, const T &obj)
 {
 	return format_src(sm, source_location(obj));
+}
+
+SrcHandle make_src(NetlistContext &netlist, slang::SourceRange source_range)
+{
+	return make_src(netlist.backend->canvas,
+			format_src(netlist.compilation.getSourceManager(), source_range));
+}
+
+SrcHandle make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
+{
+	std::string joined;
+	for (auto loc : locs) {
+		auto src = format_src(netlist.compilation.getSourceManager(), slang::SourceRange(loc, loc));
+		if (src.empty())
+			continue;
+		if (!joined.empty())
+			joined += '|';
+		joined += src;
+	}
+	return make_src(netlist.backend->canvas, joined);
 }
 
 static std::string rtlil_id(const std::string_view &view)
@@ -165,14 +190,17 @@ std::optional<RTLIL::Const> convert_attr_value(
 template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTLIL::AttrObject *to)
 {
 	auto src = format_src(netlist.compilation.getSourceManager(), from);
-	if (!src.empty())
-		to->attributes[ID::src] = src;
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
+			if (attr->name == "src")
+				src = value->decode_string();
+			else
+				to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
 		}
 	}
+
+	assign_src(to, make_src(netlist.backend->canvas, src));
 }
 template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, AttributeGuard &guard)
 {
@@ -180,7 +208,10 @@ template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, Att
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
+			if (attr->name == "src")
+				guard.set_src(value->decode_string());
+			else
+				guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
 		}
 	}
 }

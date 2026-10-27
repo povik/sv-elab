@@ -35,11 +35,18 @@ std::pair<std::string, ir::Value> BackendGraphBuilder::add_y_wire(int width)
 void BackendGraphBuilder::bless_object(RTLIL::AttrObject *object)
 {
 	object->attributes = staged_attributes;
-	if (staged_source_range_valid && !object->attributes.count(ID::src)) {
-		auto src = format_src(source_mgr, staged_source_range);
-		if (!src.empty())
-			object->attributes[ID::src] = src;
-	}
+	if (!staged_src && staged_source_range_valid)
+		staged_src = make_src(canvas, format_src(source_mgr, staged_source_range));
+	if (staged_src)
+		assign_src(object, *staged_src);
+}
+
+void BackendGraphBuilder::bless_ff(RTLIL::Cell *cell, const ir::Value &q)
+{
+	bless_object(cell);
+	for (auto &chunk : q.chunks())
+		if (chunk.wire)
+			merge_src(canvas, cell, chunk.wire);
 }
 
 ir::Value BackendGraphBuilder::Demux(ir::Value a, ir::Value s)
@@ -289,25 +296,25 @@ void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::
 		RTLIL::Cell *pos_ff =
 				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
 						RTLIL::SigBit(clk), d, pos_q, /*edge_polarity=*/true);
-		bless_object(pos_ff);
+		bless_ff(pos_ff, q);
 
 		// Create negedge FF
 		RTLIL::Cell *neg_ff =
 				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())),
 						RTLIL::SigBit(clk), d, neg_q, /*edge_polarity=*/false);
-		bless_object(neg_ff);
+		bless_ff(neg_ff, q);
 	} else {
 		RTLIL::Cell *pos_ff =
 				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
 						RTLIL::SigBit(clk), RTLIL::SigBit(aload), d, pos_q, ad,
 						/*clk_polarity=*/true, aload_polarity);
-		bless_object(pos_ff);
+		bless_ff(pos_ff, q);
 
 		RTLIL::Cell *neg_ff =
 				canvas->addAldff(canvas->uniquify(Yosys::stringf("%s$neg", base_name.c_str())),
 						RTLIL::SigBit(clk), RTLIL::SigBit(aload), d, neg_q, ad,
 						/*clk_polarity=*/false, aload_polarity);
-		bless_object(neg_ff);
+		bless_ff(neg_ff, q);
 	}
 
 	// behaviour: when clk=0: select neg_q (captures on negedge), when clk=1: select pos_q (captures
@@ -322,7 +329,7 @@ void BackendGraphBuilder::add_dff(std::string_view name, const ir::Net clk, cons
 {
 	RTLIL::Cell *cell =
 			canvas->addDff(canvas->uniquify(name), RTLIL::SigBit(clk), d, q, clk_polarity);
-	bless_object(cell);
+	bless_ff(cell, q);
 }
 
 void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
@@ -330,7 +337,7 @@ void BackendGraphBuilder::add_dffe(std::string_view name, const ir::Net clk, con
 {
 	RTLIL::Cell *cell = canvas->addDffe(canvas->uniquify(name), RTLIL::SigBit(clk),
 			RTLIL::SigBit(en), d, q, clk_polarity, en_polarity);
-	bless_object(cell);
+	bless_ff(cell, q);
 }
 
 void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Net clk, const ir::Net aload,
@@ -339,7 +346,7 @@ void BackendGraphBuilder::add_aldff(std::string_view name, const ir::Net clk, co
 {
 	RTLIL::Cell *cell = canvas->addAldff(canvas->uniquify(name), RTLIL::SigBit(clk),
 			RTLIL::SigBit(aload), d, q, ad, clk_polarity, aload_polarity);
-	bless_object(cell);
+	bless_ff(cell, q);
 }
 
 void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, const ir::Net en,
@@ -349,7 +356,7 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 	RTLIL::Cell *cell =
 			canvas->addAldffe(canvas->uniquify(name), RTLIL::SigBit(clk), RTLIL::SigBit(en),
 					RTLIL::SigBit(aload), d, q, ad, clk_polarity, en_polarity, aload_polarity);
-	bless_object(cell);
+	bless_ff(cell, q);
 }
 
 void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::string_view name,

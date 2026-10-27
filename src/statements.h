@@ -61,7 +61,8 @@ struct SwitchHelper
 	ir::Net masked_enabled;
 
 	SwitchHelper(ProceduralContext &context, ir::Value signal,
-			[[maybe_unused]] const ast::Statement *statement = nullptr)
+			[[maybe_unused]] const ast::Statement *statement = nullptr,
+			[[maybe_unused]] slang::SourceRange signal_range = {})
 		: context(context), vstate(context.vstate), dispatch(signal),
 		  original_enabled(context.enabled), masked_enabled(context.enabled)
 	{}
@@ -97,7 +98,8 @@ struct SwitchHelper
 	}
 
 	void enter_branch(std::vector<ValuePattern> compare,
-			[[maybe_unused]] const ast::Statement *case_statement = nullptr)
+			[[maybe_unused]] const ast::Statement *case_statement = nullptr,
+			[[maybe_unused]] slang::SourceRange compare_range = {})
 	{
 		auto &netlist = context.netlist;
 		save_snap = {};
@@ -121,14 +123,14 @@ struct SwitchHelper
 	}
 
 	void branch(std::vector<ValuePattern> compare, std::function<void()> f,
-			const ast::Statement *case_statement = nullptr)
+			const ast::Statement *case_statement = nullptr, slang::SourceRange compare_range = {})
 	{
 		if (compare.size() == 1 && compare[0].is_fully_def() && dispatch.is_fully_def() &&
 				dispatch != compare[0].to_value()) {
 			return;
 		}
 
-		enter_branch(compare, case_statement);
+		enter_branch(compare, case_statement, compare_range);
 		f();
 		exit_branch();
 	}
@@ -394,6 +396,18 @@ struct SwitchHelper
 
 #else // non SLANG_MUX_LOWERING
 
+// Includes the empty cases descended into after nested switches
+inline void collect_assignment_locations(
+		Case *case_, hashlib::dict<VariableBit, slang::SourceLocation> &assigned_at)
+{
+	for (auto &action : case_->actions)
+		for (uint64_t i = 0; i < action.lvalue.bitwidth(); i++)
+			assigned_at[action.lvalue[i]] = action.loc;
+	for (auto switch_ : case_->switches)
+		if (switch_->trivial())
+			collect_assignment_locations(switch_->cases[0], assigned_at);
+}
+
 struct SwitchHelper
 {
 	Case *parent;
@@ -407,12 +421,13 @@ struct SwitchHelper
 	std::vector<std::tuple<Case *, VariableBits, ir::Value>> branch_updates;
 	bool entered = false, finished = false;
 
-	SwitchHelper(
-			ProceduralContext &context, ir::Value signal, const ast::Statement *statement = nullptr)
+	SwitchHelper(ProceduralContext &context, ir::Value signal,
+			const ast::Statement *statement = nullptr, slang::SourceRange signal_range = {})
 		: parent(context.current_case), current_case(context.current_case), vstate(context.vstate)
 	{
 		sw = parent->add_switch(signal);
 		sw->statement = statement;
+		sw->signal_range = signal_range;
 	}
 
 	~SwitchHelper()
@@ -434,7 +449,7 @@ struct SwitchHelper
 	}
 
 	void enter_branch(std::vector<ValuePattern> compare,
-			[[maybe_unused]] const ast::Statement *case_statement = nullptr)
+			const ast::Statement *case_statement = nullptr, slang::SourceRange compare_range = {})
 	{
 		save_snap = {};
 		vstate.save(save_snap);
@@ -442,6 +457,7 @@ struct SwitchHelper
 		assert_invariant(current_case == parent);
 		current_case = sw->add_case(compare);
 		current_case->statement = case_statement;
+		current_case->compare_range = compare_range;
 		entered = true;
 	}
 
@@ -457,7 +473,7 @@ struct SwitchHelper
 	}
 
 	void branch(std::vector<ValuePattern> compare, std::function<void()> f,
-			const ast::Statement *case_statement = nullptr)
+			const ast::Statement *case_statement = nullptr, slang::SourceRange compare_range = {})
 	{
 		// TODO: extend detection
 		if (compare.size() == 1 && compare[0].is_fully_def() && sw->signal.is_fully_def() &&
@@ -466,7 +482,7 @@ struct SwitchHelper
 			return;
 		}
 
-		enter_branch(compare, case_statement);
+		enter_branch(compare, case_statement, compare_range);
 		f();
 		exit_branch();
 	}
@@ -507,7 +523,7 @@ struct SwitchHelper
 
 			ir::Value w_default = vstate.evaluate(netlist, chunk);
 			ir::Value w = netlist.add_placeholder_signal(chunk.bitwidth(), name_suggestion);
-			parent->aux_actions.push_back(RTLIL::SigSig(w, w_default));
+			parent->aux_actions.push_back({w, w_default});
 			vstate.set(chunk, w);
 		}
 
@@ -516,6 +532,9 @@ struct SwitchHelper
 			VariableBits target;
 			ir::Value source;
 			std::tie(rule, target, source) = branch;
+
+			hashlib::dict<VariableBit, slang::SourceLocation> assigned_at;
+			collect_assignment_locations(rule, assigned_at);
 
 			int done = 0;
 			for (auto chunk : target.chunks()) {
@@ -526,13 +545,18 @@ struct SwitchHelper
 
 				// get the wire (or some part of it) which we created up above
 				ir::Value target_w;
+				std::vector<slang::SourceLocation> locs;
 				for (uint64_t i = 0; i < chunk.bitwidth(); i++) {
 					assert_invariant(va.count(chunk[i]));
 					target_w.append(va.at(chunk[i]));
+					auto it = assigned_at.find(chunk[i]);
+					if (it != assigned_at.end() &&
+							std::find(locs.begin(), locs.end(), it->second) == locs.end())
+						locs.push_back(it->second);
 				}
 
-				rule->aux_actions.push_back(
-						RTLIL::SigSig(target_w, source.extract(done, (int)chunk.bitwidth())));
+				rule->aux_actions.push_back(make_action(target_w,
+						source.extract(done, (int)chunk.bitwidth()), make_src(netlist, locs)));
 				done += (int)chunk.bitwidth();
 			}
 		}
@@ -766,7 +790,7 @@ public:
 			// fall through on Sx
 		}
 
-		SwitchHelper b(context, condition, &cond);
+		SwitchHelper b(context, condition, &cond, cond.conditions[0].expr->sourceRange);
 
 		b.branch({ir::S1}, [&]() { cond.ifTrue.visit(*this); }, &cond.ifTrue);
 
@@ -796,7 +820,7 @@ public:
 		SwitchHelper b(context,
 				stmt.condition == ast::CaseStatementCondition::Inside ? ir::Value(ir::S1)
 																	  : dispatch,
-				&stmt);
+				&stmt, stmt.expr.sourceRange);
 
 		bool full_case = false, parallel_case = false;
 		switch (stmt.check) {
@@ -840,7 +864,9 @@ public:
 				compares.push_back(compare);
 			}
 			require(stmt, !compares.empty());
-			b.branch(compares, [&]() { item.stmt->visit(*this); }, item.stmt);
+			slang::SourceRange compare_range(item.expressions.front()->sourceRange.start(),
+					item.expressions.back()->sourceRange.end());
+			b.branch(compares, [&]() { item.stmt->visit(*this); }, item.stmt, compare_range);
 		}
 
 		if (stmt.defaultCase) {
