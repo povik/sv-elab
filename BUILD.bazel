@@ -2,14 +2,8 @@
 """
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_license//rules:license.bzl", "license")
-load(
-    "//:dependency_support/slang_ext.bzl",
-    "SLANG_VERSION_HASH",
-    "SLANG_VERSION_MAJOR",
-    "SLANG_VERSION_MINOR",
-    "SLANG_VERSION_PATCH",
-)
 
 package(
     default_applicable_licenses = [":license"],
@@ -32,26 +26,11 @@ expand_template(
     name = "version_h",
     out = "version.h",
     substitutions = {
+        "@SLANG_REVISION@": "12.0.0",
         "@SV_ELAB_REVISION@": SV_ELAB_REVISION,
-        "@SLANG_REVISION@": "{}.{}.{}".format(
-            SLANG_VERSION_MAJOR,
-            SLANG_VERSION_MINOR,
-            SLANG_VERSION_PATCH,
-        ),
     },
     template = "src/version.h.in",
 )
-
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-sh_test(
-    name = "slang_revision_check",
-    srcs = ["dependency_support/slang_revision_check.sh"],
-    data = ["@slang_revision//:revision"],
-    env = {"EXPECTED_SLANG_REVISION": SLANG_VERSION_HASH},
-)
-
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 # Frontend headers and sources are consumed as file lists by a downstream
 # backend that compiles both sides together (the frontend's own sources
@@ -68,13 +47,16 @@ cc_library(
 # tracks, instead of maintaining a parallel slang dependency of their own.
 alias(
     name = "slang",
-    actual = "@vendored-slang//:slang",
+    actual = "@sv-lang//:libsvlang",
     visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "common_srcs",
-    srcs = glob(["src/*.cc", "src/*.h"]),
+    srcs = glob([
+        "src/*.cc",
+        "src/*.h",
+    ]),
     visibility = ["//visibility:public"],
 )
 
