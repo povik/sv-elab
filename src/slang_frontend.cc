@@ -164,6 +164,10 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 			" When set to 'blackboxes' the UDP is treated as a blackboxed instance."
 			" When set to 'error', an error is emitted if a UDP is encountered. By default, the frontend emits an error.");
 
+	// read_verilog compatibility options
+	cmdLine.add("--noopt", noopt,
+				"Disable basic frontend optimizations, including constant folding");
+
 	// Deprecated section
 	cmdLine.add("--compat-mode", compat_mode,
 				"Deprecated option which is effectively always on. The old help message was "
@@ -1285,7 +1289,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 		goto error;
 	}
 
-	if (/* flag for testing */ !ignore_ast_constants ||
+	if ((/* flag for testing */ !ignore_ast_constants && !netlist.settings.noopt.value_or(false)) ||
 			expr.kind == ast::ExpressionKind::IntegerLiteral ||
 			expr.kind == ast::ExpressionKind::RealLiteral ||
 			expr.kind == ast::ExpressionKind::UnbasedUnsizedIntegerLiteral ||

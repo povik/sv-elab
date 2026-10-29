@@ -626,6 +626,7 @@ struct SynthesisSettings {
 	std::optional<bool> no_default_translate_off;
 	std::optional<bool> allow_dual_edge_ff;
 	std::optional<bool> no_synthesis_define;
+	std::optional<bool> noopt;
 	std::optional<UdpHandleMode> udp_handling;
 	// pass std::less<> to enable transparent lookup
 	std::set<std::string, std::less<>> blackboxed_modules;

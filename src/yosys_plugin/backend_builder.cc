@@ -140,7 +140,7 @@ ir::Value BackendGraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Val
 	default:                                        log_abort();
 	}
 
-	if (a.is_fully_const() && b.is_fully_const()) {
+	if (a.is_fully_const() && b.is_fully_const() && !noopt) {
 #define OP(type)                                                                                   \
 	if (rtlil_op == ID($##type))                                                                   \
 		return RTLIL::const_##type(                                                                \
@@ -213,7 +213,7 @@ ir::Value BackendGraphBuilder::Unop(
 	default:                log_abort();
 	}
 
-	if (a.is_fully_const()) {
+	if (a.is_fully_const() && !noopt) {
 		ir::Value const_result;
 		bool have_const = false;
 #define OP(type)                                                                                   \

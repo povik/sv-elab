@@ -24,6 +24,7 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 	// cell; many expression leaves never need an `src` string.
 	slang::SourceRange staged_source_range;
 	bool staged_source_range_valid = false;
+	bool noopt;
 
 	unsigned next_id = 0;
 	std::string new_id(std::string base = std::string());

@@ -609,6 +609,7 @@ struct SlangFrontend : Frontend
 				log_assert(ref_body->parentInstance);
 
 				auto backend = std::make_unique<BackendGraphBuilder>();
+				backend->noopt = settings.noopt.value_or(false);
 				backend->canvas = design->addModule(RTLIL::escape_id(module_type_id(*ref_body)));
 				backend->source_mgr = compilation->getSourceManager();
 				auto [netlist, new_] = hqueue.get_or_emplace(ref_body, std::move(backend), settings,
@@ -649,7 +650,7 @@ struct SlangFrontend : Frontend
 			log_error("Exception: %s\n", e.what());
 		}
 
-		if (!settings.no_proc.value_or(false)) {
+		if (!settings.no_proc.value_or(false) && !settings.noopt.value_or(false)) {
 			// Hack to get an empty selection in a way compatible with both pre and post Yosys v0.52
 			// Front of the selection stack should be a "full selection" at any time, and we can
 			// amend it.
@@ -851,6 +852,7 @@ struct TestSlangExprPass : Pass
 		global_compilation = &*compilation;
 		auto *source_mgr = compilation->getSourceManager();
 		auto backend = std::make_unique<BackendGraphBuilder>();
+		backend->noopt = settings.noopt.value_or(false);
 		backend->canvas = d->addModule("\\top");
 		backend->source_mgr = source_mgr;
 		NetlistContext netlist(std::move(backend), settings, *compilation, *top);
