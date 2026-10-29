@@ -129,6 +129,8 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 				"Keep hierarchy (experimental; may crash)");
 	cmdLine.add("--best-effort-hierarchy", best_effort_hierarchy,
 				"Keep hierarchy in a 'best effort' mode");
+	cmdLine.add("--undriven-as-anyseq", undriven_as_anyseq,
+				"Replaces undriven variable drivers with $anyseq as opposed to 'x");
 	cmdLine.add("--ignore-timing", ignore_timing,
 				"Ignore delays for synthesis");
 	cmdLine.add("--ignore-initial", ignore_initial,

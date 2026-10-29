@@ -92,6 +92,7 @@ extern slang::DiagCode HierarchicalRefOutsideModulesUnsupported;
 extern slang::DiagCode HighImpedanceUnsupported;
 extern slang::DiagCode IfacePortUnsupported;
 extern slang::DiagCode OptionRequiresStandaloneSlang;
+extern slang::DiagCode UndrivenAnyseqRequiresYosys;
 
 void setup_messages(slang::DiagnosticEngine &engine);
 }; // namespace diag
