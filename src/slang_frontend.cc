@@ -164,6 +164,10 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 			" When set to 'blackboxes' the UDP is treated as a blackboxed instance."
 			" When set to 'error', an error is emitted if a UDP is encountered. By default, the frontend emits an error.");
 
+	// read_verilog compatibility options
+	cmdLine.add("--specify", specify,
+				"Parse and import specify blocks");
+
 	// Deprecated section
 	cmdLine.add("--compat-mode", compat_mode,
 				"Deprecated option which is effectively always on. The old help message was "
@@ -2839,7 +2843,206 @@ public:
 	void handle(const ast::LetDeclSymbol&) {}
 	void handle(const ast::SpecparamSymbol&) {}
 	void handle(const ast::DefParamSymbol&) {}
-	void handle(const ast::SpecifyBlockSymbol&) {}
+	void handle(const ast::SpecifyBlockSymbol &sym) {
+		if (netlist.settings.specify.value_or(false))
+			visitDefault(sym);
+	}
+
+	#ifndef SLANG_NO_YOSYS
+		struct SpecifyTriple {
+			RTLIL::Const t_min, t_avg, t_max;
+		};
+	
+		std::optional<SpecifyTriple> eval_specify_triple(const ast::Expression &expr)
+		{
+			auto eval = [&](const ast::Expression &part) -> std::optional<RTLIL::Const> {
+				auto value = part.eval(netlist.eval.const_);
+				auto converted = netlist.convert_const(value, part.sourceRange.start());
+				if (!converted) {
+					netlist.add_diag(diag::InvalidSpecifyTimingLimit, part.sourceRange);
+					return std::nullopt;
+				}
+				auto result = converted->to_rtlil();
+				if (value.isInteger() && value.integer().isSigned())
+					result.flags |= RTLIL::CONST_FLAG_SIGNED;
+				return result;
+			};
+	
+			if (expr.kind == ast::ExpressionKind::MinTypMax) {
+				auto &triple = expr.as<ast::MinTypMaxExpression>();
+				auto min = eval(triple.min());
+				auto typ = eval(triple.typ());
+				auto max = eval(triple.max());
+				if (!min || !typ || !max)
+					return std::nullopt;
+				return SpecifyTriple{*min, *typ, *max};
+			}
+			auto value = eval(expr);
+			if (!value)
+				return std::nullopt;
+			return SpecifyTriple{*value, *value, *value};
+		}
+	#endif
+	
+	void handle(const ast::TimingPathSymbol &path)
+	{
+	#ifndef SLANG_NO_YOSYS
+		using Path = ast::TimingPathSymbol;
+
+		auto en_expr = path.getConditionExpr();
+		auto src_exprs = path.getInputs();
+		auto dest_exprs = path.getOutputs();
+		auto oper = path.connectionKind;
+		auto delays = path.getDelays();
+		auto dat_expr = path.getEdgeSourceExpr();
+
+		auto count = delays.size();
+		if (count != 1 && count != 2 && count != 3 && count != 6 && count != 12) {
+			netlist.add_diag(diag::InvalidSpecifyDelayCount, path.location) << count;
+			return;
+		}
+		
+		if (count > 2)
+			netlist.add_diag(diag::SpecifyExtraDelaysIgnored, path.location);
+
+		auto rise_triple = eval_specify_triple(*delays[0]);
+		int fall_idx = delays.size() == 1 ? 0 : 1;
+		auto fall_triple = eval_specify_triple(*delays[fall_idx]);
+		if (!rise_triple || !fall_triple)
+			return;
+		
+		RTLIL::IdString type = dat_expr ? ID($specify3) : ID($specify2);
+
+		auto en = en_expr ? netlist.eval(*en_expr) : ir::Value(ir::S1);
+		auto dat = dat_expr ? std::optional(netlist.eval(*dat_expr)) : std::nullopt;
+		bool full = oper == Path::ConnectionKind::Full;	
+
+		auto src_dst_pen = path.polarity != Path::Polarity::Unknown;
+		auto src_dst_pol = path.polarity == Path::Polarity::Positive;
+
+		auto edge_en = path.edgeIdentifier != ast::EdgeKind::None;
+		auto edge_pol = path.edgeIdentifier == ast::EdgeKind::PosEdge;
+
+		auto dat_dst_pen = path.edgePolarity != Path::Polarity::Unknown;
+		auto dat_dst_pol = path.edgePolarity == Path::Polarity::Positive;
+		
+		for (auto &src_e : src_exprs) {
+			for (auto &dst_e : dest_exprs) {
+
+				auto src = netlist.eval(*src_e);
+				auto dst = netlist.eval(*dst_e);			
+				if (!full && src.size() != dst.size()) {
+					netlist.add_diag(diag::SpecifyParallelWidthMismatch, slang::SourceRange(src_e->sourceRange.start(), dst_e->sourceRange.end()))
+							<< src.size() << dst.size();
+					return;
+				}
+				
+				auto cell = netlist.backend->canvas->addCell(
+							netlist.backend->new_id(), type);
+				transfer_attrs(netlist, path, cell);
+				
+				cell->setPort(ID::SRC, src);
+				cell->setPort(ID::DST, dst);
+				cell->setPort(ID::EN, en);
+				cell->setParam(ID::SRC_WIDTH, int(src.size()));
+				cell->setParam(ID::DST_WIDTH, int(dst.size()));
+				cell->setParam(ID::FULL, RTLIL::Const(full, 1));
+				cell->setParam(ID::SRC_DST_PEN, RTLIL::Const(src_dst_pen, 1));
+				cell->setParam(ID::SRC_DST_POL, RTLIL::Const(src_dst_pol, 1));
+				if (dat) {
+					cell->setPort(ID::DAT, *dat);
+					cell->setParam(ID::DAT_DST_PEN, RTLIL::Const(dat_dst_pen, 1));
+					cell->setParam(ID::DAT_DST_POL, RTLIL::Const(dat_dst_pol, 1));
+					cell->setParam(ID::EDGE_EN, RTLIL::Const(edge_en, 1));
+					cell->setParam(ID::EDGE_POL, RTLIL::Const(edge_pol, 1));
+				}
+				cell->setParam(ID::T_RISE_MIN, rise_triple->t_min);
+				cell->setParam(ID::T_RISE_TYP, rise_triple->t_avg);
+				cell->setParam(ID::T_RISE_MAX, rise_triple->t_max);
+				cell->setParam(ID::T_FALL_MIN, fall_triple->t_min);
+				cell->setParam(ID::T_FALL_TYP, fall_triple->t_avg);
+				cell->setParam(ID::T_FALL_MAX, fall_triple->t_max);
+			}
+		}
+	#endif
+	}
+
+	void handle(const ast::SystemTimingCheckSymbol &check)
+	{
+#ifndef SLANG_NO_YOSYS
+		auto &syntax = check.getSyntax()
+				->as<slang::syntax::SystemTimingCheckSyntax>();
+		std::string rule_name(syntax.name.valueText());
+		if (rule_name != "$setup" && rule_name != "$hold" && rule_name != "$setuphold" &&
+				rule_name != "$removal" && rule_name != "$recovery" && rule_name != "$recrem" &&
+				rule_name != "$skew" && rule_name != "$timeskew" && rule_name != "$fullskew" &&
+				rule_name != "$nochange") {
+			netlist.add_diag(diag::SpecifyRuleUnsupported, check.location) << rule_name;
+			return;
+		}
+
+		auto args = check.getArguments();
+		if (args.size() != 3 && args.size() != 4) {
+			netlist.add_diag(diag::SpecifyRuleArgumentsUnsupported, check.location) << rule_name;
+			return;
+		}
+		for (const auto &arg : args) {
+			if (!arg.expr) {
+				netlist.add_diag(diag::SpecifyRuleMissingArgument, check.location) << rule_name;
+				return;
+			}
+			if (!arg.edgeDescriptors.empty() || arg.edge == ast::EdgeKind::BothEdges) {
+				netlist.add_diag(diag::SpecifyRuleEdgeUnsupported, arg.expr->sourceRange) << rule_name;
+				return;
+			}
+		}
+
+		auto src_pen = RTLIL::Const(args[0].edge != ast::EdgeKind::None, 1);
+		auto src_pol = RTLIL::Const(args[0].edge == ast::EdgeKind::PosEdge, 1);
+		auto src_expr = netlist.eval(*args[0].expr);
+		auto src_en = args[0].condition
+				? netlist.eval(*args[0].condition) : ir::Value(ir::S1);
+
+		auto dst_pen = RTLIL::Const(args[1].edge != ast::EdgeKind::None, 1);
+		auto dst_pol = RTLIL::Const(args[1].edge == ast::EdgeKind::PosEdge, 1);
+		auto dst_expr = netlist.eval(*args[1].expr);
+		auto dst_en = args[1].condition
+				? netlist.eval(*args[1].condition) : ir::Value(ir::S1);
+
+		auto limit = eval_specify_triple(*args[2].expr);
+		if (!limit)
+			return;
+		std::optional<SpecifyTriple> limit2;
+		if (args.size() == 4) {
+			limit2 = eval_specify_triple(*args[3].expr);
+			if (!limit2)
+				return;
+		}
+		RTLIL::Const zero(0);
+		zero.flags |= RTLIL::CONST_FLAG_SIGNED;
+
+		auto cell = netlist.backend->canvas->addCell(netlist.backend->new_id(), ID($specrule));
+		transfer_attrs(netlist, check, cell);
+
+		cell->setParam(ID::TYPE, RTLIL::Const(rule_name));
+		cell->setParam(ID::T_LIMIT_MIN, limit->t_min);
+		cell->setParam(ID::T_LIMIT_TYP, limit->t_avg);
+		cell->setParam(ID::T_LIMIT_MAX, limit->t_max);
+		cell->setParam(ID::T_LIMIT2_MIN, limit2 ? limit2->t_min : zero);
+		cell->setParam(ID::T_LIMIT2_TYP, limit2 ? limit2->t_avg : zero);
+		cell->setParam(ID::T_LIMIT2_MAX, limit2 ? limit2->t_max : zero);
+		cell->setParam(ID::SRC_PEN, src_pen);
+		cell->setParam(ID::SRC_POL, src_pol);
+		cell->setParam(ID::DST_PEN, dst_pen);
+		cell->setParam(ID::DST_POL, dst_pol);
+		cell->setPort(ID::SRC_EN, src_en);
+		cell->setPort(ID::SRC, src_expr);
+		cell->setPort(ID::DST_EN, dst_en);
+		cell->setPort(ID::DST, dst_expr);
+		cell->setParam(ID::SRC_WIDTH, int(src_expr.size()));
+		cell->setParam(ID::DST_WIDTH, int(dst_expr.size()));
+#endif
+	}
 
 	void handle(const ast::StatementBlockSymbol &sym)
 	{
