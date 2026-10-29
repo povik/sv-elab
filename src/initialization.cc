@@ -16,9 +16,15 @@
 #include "slang_frontend.h"
 #include "variables.h"
 
+#ifndef SLANG_NO_YOSYS
+#include "backend_builder.h"
+#else
+#include "diag.h"
+#endif
+
 namespace slang_frontend {
 
-template <typename Func> void visit_netlist_variables(NetlistContext &netlist, Func &&visit_fn)
+template <typename Func> void visit_netlist_variables(NetlistContext &netlist, Func &&visit_fn, bool visit_nets = false)
 {
 	netlist.realm.visit(ast::makeVisitor(
 			[&](auto &, const ast::VariableSymbol &symbol) {
@@ -26,6 +32,10 @@ template <typename Func> void visit_netlist_variables(NetlistContext &netlist, F
 						symbol.lifetime == ast::VariableLifetime::Static) {
 					visit_fn(symbol);
 				}
+			},
+			[&](auto &, const ast::NetSymbol &symbol) {
+				if (visit_nets && symbol.getType().isFixedSize())
+					visit_fn(symbol);
 			},
 			[&](auto &visitor, const ast::InstanceSymbol &symbol) {
 				if (netlist.should_dissolve(symbol))
@@ -128,8 +138,11 @@ void finalize_variable_initialization(NetlistContext &netlist)
 {
 	visit_netlist_variables(netlist, [&](const ast::ValueSymbol &symbol) {
 		const ast::VariableSymbol *variable_symbol = nullptr;
+		const ast::NetSymbol *net_symbol = nullptr;
 		if (ast::VariableSymbol::isKind(symbol.kind)) {
 			variable_symbol = &symbol.as<ast::VariableSymbol>();
+		} else if (ast::NetSymbol::isKind(symbol.kind)) {
+			net_symbol = &symbol.as<ast::NetSymbol>();
 		} else if (ast::ModportPortSymbol::isKind(symbol.kind)) {
 			auto &port = symbol.as<ast::ModportPortSymbol>();
 			ast_invariant(port, port.internalSymbol != nullptr);
@@ -141,7 +154,7 @@ void finalize_variable_initialization(NetlistContext &netlist)
 
 		auto variable = Variable::from_symbol(&symbol);
 #ifndef SLANG_NO_YOSYS
-		if (netlist.is_inferred_memory(*variable_symbol)) {
+		if (netlist.is_inferred_memory(*variable_symbol) || netlist.is_inferred_memory(*net_symbol)) {
 			// Nothing to do
 		} else
 #endif
@@ -149,6 +162,7 @@ void finalize_variable_initialization(NetlistContext &netlist)
 			auto signal = netlist.convert_static(variable);
 			ir::Value cl, cr; // lhs/rhs of a new connection
 			ir::Const attr_value(ir::Sx, signal.size());
+			ir::Value undriven;
 			for (uint64_t i = 0; i < signal.size(); i++) {
 				VariableBit vbit(variable, i);
 				bool register_driven = netlist.register_driven_variables.count(vbit);
@@ -160,16 +174,35 @@ void finalize_variable_initialization(NetlistContext &netlist)
 					attr_value.set(i, state);
 				} else {
 					if (!driven) {
-						cl.append(signal[i]);
-						cr.append(state);
+						if (netlist.settings.undriven_as_anyseq.value_or(false)) {
+#ifndef SLANG_NO_YOSYS
+							undriven.append(signal[i]);
+#else
+							netlist.add_diag(diag::UndrivenAnyseqRequiresYosys, symbol.location);
+							cl.append(signal[i]);
+							cr.append(state);
+#endif
+						} else {
+							cl.append(signal[i]);
+							cr.append(state);
+						}
 					}
 				}
 			}
 
+#ifndef SLANG_NO_YOSYS
+			if (!undriven.empty()) {
+				auto& backend = netlist.backend;
+				RTLIL::Module* canvas = backend.get()->canvas;
+				auto value = canvas->Anyseq(backend->new_id(), undriven.size());
+				netlist.connect(undriven, value);
+			}
+#endif
+
 			netlist.set_initialization(signal, attr_value);
 			netlist.connect(cl, cr);
 		}
-	});
+	}, true);
 }
 
 }; // namespace slang_frontend
