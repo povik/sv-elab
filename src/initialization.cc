@@ -151,8 +151,12 @@ void finalize_variable_initialization(NetlistContext &netlist)
 		} else {
 			ast_unreachable(symbol);
 		}
+		bool undriven_as_anyseq = netlist.settings.undriven_as_anyseq.value_or(false);
 
 		auto variable = Variable::from_symbol(&symbol);
+		if (variable.is_special_net()) return;
+		// don't initialize nets to x, only initialize them to anyseq
+		if (!undriven_as_anyseq && net_symbol) return;
 #ifndef SLANG_NO_YOSYS
 		if (netlist.is_inferred_memory(*variable_symbol) || netlist.is_inferred_memory(*net_symbol)) {
 			// Nothing to do
@@ -174,7 +178,7 @@ void finalize_variable_initialization(NetlistContext &netlist)
 					attr_value.set(i, state);
 				} else {
 					if (!driven) {
-						if (netlist.settings.undriven_as_anyseq.value_or(false)) {
+						if (undriven_as_anyseq) {
 #ifndef SLANG_NO_YOSYS
 							undriven.append(signal[i]);
 #else
