@@ -139,7 +139,6 @@ DiagCode HighImpedanceUnsupported(DiagSubsystem::Netlist, 1086);
 DiagCode IfacePortUnsupported(DiagSubsystem::Netlist, 1087);
 DiagCode OptionRequiresStandaloneSlang(DiagSubsystem::Netlist, 1088);
 DiagCode NoteModuleNotDissolvedBecauseInOut(DiagSubsystem::Netlist, 1089);
-DiagCode UndrivenAnyseqRequiresYosys(DiagSubsystem::Netlist, 1090);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -374,9 +373,6 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(OptionRequiresStandaloneSlang, "option '{}' unsupported; please use standalone slang instead");
 	engine.setSeverity(OptionRequiresStandaloneSlang, DiagnosticSeverity::Error);
-	
-	engine.setMessage(UndrivenAnyseqRequiresYosys, "undriven signal found, --undriven-as-anyseq has no effect without Yosys");
-	engine.setSeverity(UndrivenAnyseqRequiresYosys, DiagnosticSeverity::Warning);
 	// clang-format on
 }
 }; // namespace diag

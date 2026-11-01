@@ -18,8 +18,6 @@
 
 #ifndef SLANG_NO_YOSYS
 #include "backend_builder.h"
-#else
-#include "diag.h"
 #endif
 
 namespace slang_frontend {
@@ -136,13 +134,50 @@ void evaluate_decl_initializers(NetlistContext &netlist)
 
 void finalize_variable_initialization(NetlistContext &netlist)
 {
+#ifndef SLANG_NO_YOSYS
+	if (netlist.settings.undriven_as_anyseq.value_or(false)) {
+		// For undriven to anyseq conversion do a pre-pass
+		// which covers both nets and variables
+		visit_netlist_variables(netlist, [&](const ast::ValueSymbol &symbol) {
+				const ast::ValueSymbol *underlying_symbol;
+				if (ast::ModportPortSymbol::isKind(symbol.kind)) {
+					auto &port = symbol.as<ast::ModportPortSymbol>();
+					ast_invariant(port, port.internalSymbol != nullptr);
+					ast_invariant(port, ast::VariableSymbol::isKind(port.internalSymbol->kind));
+					underlying_symbol = &port.internalSymbol->as<ast::VariableSymbol>();
+				} else {
+					underlying_symbol = &symbol;
+				}
+
+				if (netlist.is_inferred_memory(*underlying_symbol))
+					return;
+
+				auto variable = Variable::from_symbol(&symbol);
+				if (variable.is_special_net())
+					return;
+
+				VariableBits undriven;
+				auto signal = netlist.convert_static(variable);
+				for (uint64_t i = 0; i < signal.size(); i++) {
+					VariableBit vbit(variable, i);
+					if (!netlist.driven_variables.count(vbit)) {
+						undriven.append(vbit);
+					}
+				}
+
+				auto& backend = netlist.backend;
+				RTLIL::Module* canvas = backend.get()->canvas;
+				auto value = canvas->Anyseq(backend->new_id(), undriven.bitwidth());
+				// add_continuous_driver registers the target as driven internally
+				netlist.add_continuous_driver(undriven, value);
+		}, /* visit_nets= */ true);
+	}
+#endif
+
 	visit_netlist_variables(netlist, [&](const ast::ValueSymbol &symbol) {
 		const ast::VariableSymbol *variable_symbol = nullptr;
-		const ast::NetSymbol *net_symbol = nullptr;
 		if (ast::VariableSymbol::isKind(symbol.kind)) {
 			variable_symbol = &symbol.as<ast::VariableSymbol>();
-		} else if (ast::NetSymbol::isKind(symbol.kind)) {
-			net_symbol = &symbol.as<ast::NetSymbol>();
 		} else if (ast::ModportPortSymbol::isKind(symbol.kind)) {
 			auto &port = symbol.as<ast::ModportPortSymbol>();
 			ast_invariant(port, port.internalSymbol != nullptr);
@@ -151,14 +186,11 @@ void finalize_variable_initialization(NetlistContext &netlist)
 		} else {
 			ast_unreachable(symbol);
 		}
-		bool undriven_as_anyseq = netlist.settings.undriven_as_anyseq.value_or(false);
 
 		auto variable = Variable::from_symbol(&symbol);
-		if (variable.is_special_net()) return;
-		// don't initialize nets to x, only initialize them to anyseq
-		if (!undriven_as_anyseq && net_symbol) return;
+
 #ifndef SLANG_NO_YOSYS
-		if (netlist.is_inferred_memory(*variable_symbol) || netlist.is_inferred_memory(*net_symbol)) {
+		if (netlist.is_inferred_memory(*variable_symbol)) {
 			// Nothing to do
 		} else
 #endif
@@ -166,7 +198,6 @@ void finalize_variable_initialization(NetlistContext &netlist)
 			auto signal = netlist.convert_static(variable);
 			ir::Value cl, cr; // lhs/rhs of a new connection
 			ir::Const attr_value(ir::Sx, signal.size());
-			ir::Value undriven;
 			for (uint64_t i = 0; i < signal.size(); i++) {
 				VariableBit vbit(variable, i);
 				bool register_driven = netlist.register_driven_variables.count(vbit);
@@ -178,35 +209,16 @@ void finalize_variable_initialization(NetlistContext &netlist)
 					attr_value.set(i, state);
 				} else {
 					if (!driven) {
-						if (undriven_as_anyseq) {
-#ifndef SLANG_NO_YOSYS
-							undriven.append(signal[i]);
-#else
-							netlist.add_diag(diag::UndrivenAnyseqRequiresYosys, symbol.location);
-							cl.append(signal[i]);
-							cr.append(state);
-#endif
-						} else {
-							cl.append(signal[i]);
-							cr.append(state);
-						}
+						cl.append(signal[i]);
+						cr.append(state);
 					}
 				}
 			}
 
-#ifndef SLANG_NO_YOSYS
-			if (!undriven.empty()) {
-				auto& backend = netlist.backend;
-				RTLIL::Module* canvas = backend.get()->canvas;
-				auto value = canvas->Anyseq(backend->new_id(), undriven.size());
-				netlist.connect(undriven, value);
-			}
-#endif
-
 			netlist.set_initialization(signal, attr_value);
 			netlist.connect(cl, cr);
 		}
-	}, true);
+	}, /* visit_nets= */ false);
 }
 
 }; // namespace slang_frontend
