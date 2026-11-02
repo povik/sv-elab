@@ -30,8 +30,8 @@
 #include "kernel/yosys_common.h"
 #include "kernel/rtlil.h"
 #include "kernel/log.h"
-#if __has_include("frontends/common/attributes.h")
-#include "frontends/common/attributes.h"
+#if __has_include("kernel/metadata/attributes.h")
+#include "kernel/metadata/attributes.h"
 #endif
 #endif
 
@@ -187,7 +187,7 @@ template <typename Rule> void assign_signal_src(Rule *rule, [[maybe_unused]] Src
 		rule->signal_src = std::move(src);
 }
 
-#if __has_include("frontends/common/attributes.h")
+#if __has_include("kernel/metadata/attributes.h")
 inline void set_imported_attribute(RTLIL::Design *design, RTLIL::AttrObject *obj, RTLIL::IdString id, const RTLIL::Const &value)
 {
 	Yosys::import_attribute(design, obj, id, value);
