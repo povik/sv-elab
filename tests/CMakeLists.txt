@@ -66,6 +66,7 @@ set(ALL_TESTS
     various/readmem.ys
     various/readmem_diag.ys
     various/regress.ys
+    various/specify.ys
     various/stringattrs.ys
     various/stringparams.ys
     various/timescale.ys

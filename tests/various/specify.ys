@@ -1,3 +1,12 @@
+logger -expect error ".*expected one, two, three, six, or twelve delay values assigned to module path.*" 1
+read_slang --keep-hierarchy <<EOT
+module delays_4(input a, output q);
+  assign q = ~a;
+  specify
+    (a => q) = (1, 2, 3, 4);
+  endspecify
+endmodule
+EOT
 
 read_slang --keep-hierarchy specify.v
 setattr -mod -unset blackbox -unset whitebox =*
