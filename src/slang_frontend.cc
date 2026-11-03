@@ -68,6 +68,8 @@
 #include "slang/util/Util.h"
 
 #ifndef SLANG_NO_YOSYS
+#include "yosys_plugin/driver.h"
+
 #include "kernel/yosys_common.h"
 #include "kernel/log.h"
 #include "kernel/bitpattern.h"
@@ -2852,12 +2854,9 @@ public:
 		{
 			auto eval = [&](const ast::Expression &part) -> std::optional<RTLIL::Const> {
 				auto value = part.eval(netlist.eval.const_);
-				auto converted = netlist.convert_const(value, part.sourceRange.start());
-				if (!converted) {
-					netlist.add_diag(diag::InvalidSpecifyTimingLimit, part.sourceRange);
-					return std::nullopt;
-				}
-				auto result = converted->to_rtlil();
+				std::optional<RTLIL::Const> result_opt = convert_const_rtlil(netlist, value, part.sourceRange.start());
+				if (!result_opt) return std::nullopt;
+				RTLIL::Const result = *result_opt;
 				if (value.isInteger() && value.integer().isSigned())
 					result.flags |= RTLIL::CONST_FLAG_SIGNED;
 				return result;
