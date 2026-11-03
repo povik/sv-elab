@@ -1,0 +1,11 @@
+
+read_slang --undriven-as-anyseq undef.sv
+
+select -module undef
+
+select -assert-count 1 w:single_wire      %ci* t:$anyseq %i r:WIDTH=1 %i
+select -assert-count 1 w:single_reg       %ci* t:$anyseq %i r:WIDTH=1 %i
+select -assert-count 1 w:bus_wire         %ci* t:$anyseq %i r:WIDTH=2 %i
+select -assert-count 1 w:bus_wire_partial %ci* t:$anyseq %i r:WIDTH=1 %i
+select -assert-count 1 w:initialized_reg  %ci* t:$anyseq %i r:WIDTH=1 %i
+select -assert-count 0 w:driven_reg       %ci* t:$anyseq %i
