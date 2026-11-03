@@ -164,10 +164,6 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 			" When set to 'blackboxes' the UDP is treated as a blackboxed instance."
 			" When set to 'error', an error is emitted if a UDP is encountered. By default, the frontend emits an error.");
 
-	// read_verilog compatibility options
-	cmdLine.add("--specify", specify,
-				"Parse and import specify blocks");
-
 	// Deprecated section
 	cmdLine.add("--compat-mode", compat_mode,
 				"Deprecated option which is effectively always on. The old help message was "
@@ -2844,8 +2840,7 @@ public:
 	void handle(const ast::SpecparamSymbol&) {}
 	void handle(const ast::DefParamSymbol&) {}
 	void handle(const ast::SpecifyBlockSymbol &sym) {
-		if (netlist.settings.specify.value_or(false))
-			visitDefault(sym);
+		visitDefault(sym);
 	}
 
 	#ifndef SLANG_NO_YOSYS

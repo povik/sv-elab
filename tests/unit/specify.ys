@@ -1,0 +1,517 @@
+
+read_slang --keep-hierarchy specify.v
+setattr -mod -unset blackbox -unset whitebox =*
+
+# Got sources of truth from read_verilog
+log -header "Checking parallel_scalar module"
+select -module parallel_scalar
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=1
+select -assert-count 1 r:T_RISE_TYP=1
+select -assert-count 1 r:T_RISE_MAX=1
+select -assert-count 1 r:T_FALL_MIN=1
+select -assert-count 1 r:T_FALL_TYP=1
+select -assert-count 1 r:T_FALL_MAX=1
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking parallel_vector module"
+select -module parallel_vector
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=2
+select -assert-count 1 r:T_RISE_TYP=2
+select -assert-count 1 r:T_RISE_MAX=2
+select -assert-count 1 r:T_FALL_MIN=3
+select -assert-count 1 r:T_FALL_TYP=3
+select -assert-count 1 r:T_FALL_MAX=3
+select -assert-count 1 r:SRC_WIDTH=4
+select -assert-count 1 r:DST_WIDTH=4
+
+log -header "Checking full_vector module"
+select -module full_vector
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'1
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=4
+select -assert-count 1 r:T_RISE_TYP=5
+select -assert-count 1 r:T_RISE_MAX=6
+select -assert-count 1 r:T_FALL_MIN=7
+select -assert-count 1 r:T_FALL_TYP=8
+select -assert-count 1 r:T_FALL_MAX=9
+select -assert-count 1 r:SRC_WIDTH=4
+select -assert-count 1 r:DST_WIDTH=2
+
+log -header "Checking selected_terminals module"
+select -module selected_terminals
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=10
+select -assert-count 1 r:T_RISE_TYP=10
+select -assert-count 1 r:T_RISE_MAX=10
+select -assert-count 1 r:T_FALL_MIN=10
+select -assert-count 1 r:T_FALL_TYP=10
+select -assert-count 1 r:T_FALL_MAX=10
+select -assert-count 1 r:SRC_WIDTH=3
+select -assert-count 1 r:DST_WIDTH=3
+
+log -header "Checking positive_path module"
+select -module positive_path
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'1
+select -assert-count 1 r:SRC_DST_POL=1'1
+select -assert-count 1 r:T_RISE_MIN=11
+select -assert-count 1 r:T_RISE_TYP=11
+select -assert-count 1 r:T_RISE_MAX=11
+select -assert-count 1 r:T_FALL_MIN=11
+select -assert-count 1 r:T_FALL_TYP=11
+select -assert-count 1 r:T_FALL_MAX=11
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking negative_path module"
+select -module negative_path
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'1
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=12
+select -assert-count 1 r:T_RISE_TYP=12
+select -assert-count 1 r:T_RISE_MAX=12
+select -assert-count 1 r:T_FALL_MIN=12
+select -assert-count 1 r:T_FALL_TYP=12
+select -assert-count 1 r:T_FALL_MAX=12
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking conditional_path module"
+select -module conditional_path
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=13
+select -assert-count 1 r:T_RISE_TYP=13
+select -assert-count 1 r:T_RISE_MAX=13
+select -assert-count 1 r:T_FALL_MIN=13
+select -assert-count 1 r:T_FALL_TYP=13
+select -assert-count 1 r:T_FALL_MAX=13
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking conditional_expression module"
+select -module conditional_expression
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'1
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=14
+select -assert-count 1 r:T_RISE_TYP=14
+select -assert-count 1 r:T_RISE_MAX=14
+select -assert-count 1 r:T_FALL_MIN=14
+select -assert-count 1 r:T_FALL_TYP=14
+select -assert-count 1 r:T_FALL_MAX=14
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking single_triple module"
+select -module single_triple
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=7
+select -assert-count 1 r:T_RISE_TYP=8
+select -assert-count 1 r:T_RISE_MAX=9
+select -assert-count 1 r:T_FALL_MIN=7
+select -assert-count 1 r:T_FALL_TYP=8
+select -assert-count 1 r:T_FALL_MAX=9
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking delays_3 module"
+select -module delays_3
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=1
+select -assert-count 1 r:T_RISE_TYP=1
+select -assert-count 1 r:T_RISE_MAX=1
+select -assert-count 1 r:T_FALL_MIN=2
+select -assert-count 1 r:T_FALL_TYP=2
+select -assert-count 1 r:T_FALL_MAX=2
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking delays_6 module"
+select -module delays_6
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=1
+select -assert-count 1 r:T_RISE_TYP=1
+select -assert-count 1 r:T_RISE_MAX=1
+select -assert-count 1 r:T_FALL_MIN=2
+select -assert-count 1 r:T_FALL_TYP=2
+select -assert-count 1 r:T_FALL_MAX=2
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking delays_12 module"
+select -module delays_12
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=1
+select -assert-count 1 r:T_RISE_TYP=1
+select -assert-count 1 r:T_RISE_MAX=1
+select -assert-count 1 r:T_FALL_MIN=2
+select -assert-count 1 r:T_FALL_TYP=2
+select -assert-count 1 r:T_FALL_MAX=2
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking posedge_parallel module"
+select -module posedge_parallel
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=15
+select -assert-count 1 r:T_RISE_TYP=15
+select -assert-count 1 r:T_RISE_MAX=15
+select -assert-count 1 r:T_FALL_MIN=15
+select -assert-count 1 r:T_FALL_TYP=15
+select -assert-count 1 r:T_FALL_MAX=15
+select -assert-count 1 r:EDGE_EN=1'1
+select -assert-count 1 r:EDGE_POL=1'1
+select -assert-count 1 r:DAT_DST_PEN=1'0
+select -assert-count 1 r:DAT_DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking negedge_full module"
+select -module negedge_full
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'1
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=16
+select -assert-count 1 r:T_RISE_TYP=16
+select -assert-count 1 r:T_RISE_MAX=16
+select -assert-count 1 r:T_FALL_MIN=17
+select -assert-count 1 r:T_FALL_TYP=17
+select -assert-count 1 r:T_FALL_MAX=17
+select -assert-count 1 r:EDGE_EN=1'1
+select -assert-count 1 r:EDGE_POL=1'0
+select -assert-count 1 r:DAT_DST_PEN=1'1
+select -assert-count 1 r:DAT_DST_POL=1'1
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=3
+
+log -header "Checking data_negative module"
+select -module data_negative
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=18
+select -assert-count 1 r:T_RISE_TYP=18
+select -assert-count 1 r:T_RISE_MAX=18
+select -assert-count 1 r:T_FALL_MIN=18
+select -assert-count 1 r:T_FALL_TYP=18
+select -assert-count 1 r:T_FALL_MAX=18
+select -assert-count 1 r:EDGE_EN=1'0
+select -assert-count 1 r:EDGE_POL=1'0
+select -assert-count 1 r:DAT_DST_PEN=1'1
+select -assert-count 1 r:DAT_DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking source_and_data_polarity module"
+select -module source_and_data_polarity
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'1
+select -assert-count 1 r:SRC_DST_PEN=1'1
+select -assert-count 1 r:SRC_DST_POL=1'1
+select -assert-count 1 r:T_RISE_MIN=19
+select -assert-count 1 r:T_RISE_TYP=19
+select -assert-count 1 r:T_RISE_MAX=19
+select -assert-count 1 r:T_FALL_MIN=19
+select -assert-count 1 r:T_FALL_TYP=19
+select -assert-count 1 r:T_FALL_MAX=19
+select -assert-count 1 r:EDGE_EN=1'1
+select -assert-count 1 r:EDGE_POL=1'1
+select -assert-count 1 r:DAT_DST_PEN=1'1
+select -assert-count 1 r:DAT_DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking selected_edge_terminals module"
+select -module selected_edge_terminals
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=20
+select -assert-count 1 r:T_RISE_TYP=20
+select -assert-count 1 r:T_RISE_MAX=20
+select -assert-count 1 r:T_FALL_MIN=20
+select -assert-count 1 r:T_FALL_TYP=20
+select -assert-count 1 r:T_FALL_MAX=20
+select -assert-count 1 r:EDGE_EN=1'1
+select -assert-count 1 r:EDGE_POL=1'1
+select -assert-count 1 r:DAT_DST_PEN=1'1
+select -assert-count 1 r:DAT_DST_POL=1'1
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking data_expression module"
+select -module data_expression
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'1
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=21
+select -assert-count 1 r:T_RISE_TYP=21
+select -assert-count 1 r:T_RISE_MAX=21
+select -assert-count 1 r:T_FALL_MIN=21
+select -assert-count 1 r:T_FALL_TYP=21
+select -assert-count 1 r:T_FALL_MAX=21
+select -assert-count 1 r:EDGE_EN=1'1
+select -assert-count 1 r:EDGE_POL=1'1
+select -assert-count 1 r:DAT_DST_PEN=1'0
+select -assert-count 1 r:DAT_DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking conditional_edge module"
+select -module conditional_edge
+select -assert-count 1 t:$specify3
+select -assert-count 1 r:FULL=1'1
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=22
+select -assert-count 1 r:T_RISE_TYP=23
+select -assert-count 1 r:T_RISE_MAX=24
+select -assert-count 1 r:T_FALL_MIN=25
+select -assert-count 1 r:T_FALL_TYP=26
+select -assert-count 1 r:T_FALL_MAX=27
+select -assert-count 1 r:EDGE_EN=1'1
+select -assert-count 1 r:EDGE_POL=1'1
+select -assert-count 1 r:DAT_DST_PEN=1'0
+select -assert-count 1 r:DAT_DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_setup module"
+select -module timing_setup
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$setup
+select -assert-count 1 r:T_LIMIT_MIN=1
+select -assert-count 1 r:T_LIMIT_TYP=2
+select -assert-count 1 r:T_LIMIT_MAX=3
+select -assert-count 1 r:T_LIMIT2_MIN=0
+select -assert-count 1 r:T_LIMIT2_TYP=0
+select -assert-count 1 r:T_LIMIT2_MAX=0
+select -assert-count 1 r:SRC_PEN=1'0
+select -assert-count 1 r:SRC_POL=1'0
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'1
+select -assert-count 1 r:SRC_WIDTH=4
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_hold module"
+select -module timing_hold
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$hold
+select -assert-count 1 r:T_LIMIT_MIN=4
+select -assert-count 1 r:T_LIMIT_TYP=4
+select -assert-count 1 r:T_LIMIT_MAX=4
+select -assert-count 1 r:T_LIMIT2_MIN=0
+select -assert-count 1 r:T_LIMIT2_TYP=0
+select -assert-count 1 r:T_LIMIT2_MAX=0
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'0
+select -assert-count 1 r:DST_PEN=1'0
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=4
+
+log -header "Checking timing_setuphold module"
+select -module timing_setuphold
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$setuphold
+select -assert-count 1 r:T_LIMIT_MIN=5
+select -assert-count 1 r:T_LIMIT_TYP=6
+select -assert-count 1 r:T_LIMIT_MAX=7
+select -assert-count 1 r:T_LIMIT2_MIN=8
+select -assert-count 1 r:T_LIMIT2_TYP=9
+select -assert-count 1 r:T_LIMIT2_MAX=10
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'0
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=4
+
+log -header "Checking timing_recovery module"
+select -module timing_recovery
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$recovery
+select -assert-count 1 r:T_LIMIT_MIN=11
+select -assert-count 1 r:T_LIMIT_TYP=11
+select -assert-count 1 r:T_LIMIT_MAX=11
+select -assert-count 1 r:T_LIMIT2_MIN=0
+select -assert-count 1 r:T_LIMIT2_TYP=0
+select -assert-count 1 r:T_LIMIT2_MAX=0
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'1
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_removal module"
+select -module timing_removal
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$removal
+select -assert-count 1 r:T_LIMIT_MIN=12
+select -assert-count 1 r:T_LIMIT_TYP=12
+select -assert-count 1 r:T_LIMIT_MAX=12
+select -assert-count 1 r:T_LIMIT2_MIN=0
+select -assert-count 1 r:T_LIMIT2_TYP=0
+select -assert-count 1 r:T_LIMIT2_MAX=0
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'0
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_recrem module"
+select -module timing_recrem
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$recrem
+select -assert-count 1 r:T_LIMIT_MIN=13
+select -assert-count 1 r:T_LIMIT_TYP=13
+select -assert-count 1 r:T_LIMIT_MAX=13
+select -assert-count 1 r:T_LIMIT2_MIN=14
+select -assert-count 1 r:T_LIMIT2_TYP=14
+select -assert-count 1 r:T_LIMIT2_MAX=14
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'1
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_skew module"
+select -module timing_skew
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$skew
+select -assert-count 1 r:T_LIMIT_MIN=15
+select -assert-count 1 r:T_LIMIT_TYP=15
+select -assert-count 1 r:T_LIMIT_MAX=15
+select -assert-count 1 r:T_LIMIT2_MIN=0
+select -assert-count 1 r:T_LIMIT2_TYP=0
+select -assert-count 1 r:T_LIMIT2_MAX=0
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_timeskew module"
+select -module timing_timeskew
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$timeskew
+select -assert-count 1 r:T_LIMIT_MIN=16
+select -assert-count 1 r:T_LIMIT_TYP=16
+select -assert-count 1 r:T_LIMIT_MAX=16
+select -assert-count 1 r:T_LIMIT2_MIN=0
+select -assert-count 1 r:T_LIMIT2_TYP=0
+select -assert-count 1 r:T_LIMIT2_MAX=0
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_fullskew module"
+select -module timing_fullskew
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$fullskew
+select -assert-count 1 r:T_LIMIT_MIN=17
+select -assert-count 1 r:T_LIMIT_TYP=17
+select -assert-count 1 r:T_LIMIT_MAX=17
+select -assert-count 1 r:T_LIMIT2_MIN=18
+select -assert-count 1 r:T_LIMIT2_TYP=18
+select -assert-count 1 r:T_LIMIT2_MAX=18
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'1
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking timing_nochange module"
+select -module timing_nochange
+select -assert-count 1 t:$specrule
+select -assert-count 1 r:TYPE=$nochange
+select -assert-count 1 r:T_LIMIT_MIN=32'hfffffffe
+select -assert-count 1 r:T_LIMIT_TYP=32'hffffffff
+select -assert-count 1 r:T_LIMIT_MAX=0
+select -assert-count 1 r:T_LIMIT2_MIN=1
+select -assert-count 1 r:T_LIMIT2_TYP=2
+select -assert-count 1 r:T_LIMIT2_MAX=3
+select -assert-count 1 r:SRC_PEN=1'1
+select -assert-count 1 r:SRC_POL=1'1
+select -assert-count 1 r:DST_PEN=1'0
+select -assert-count 1 r:DST_POL=1'0
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=4
+
+log -header "Checking blackbox_timing module"
+select -module blackbox_timing
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=28
+select -assert-count 1 r:T_RISE_TYP=28
+select -assert-count 1 r:T_RISE_MAX=28
+select -assert-count 1 r:T_FALL_MIN=28
+select -assert-count 1 r:T_FALL_TYP=28
+select -assert-count 1 r:T_FALL_MAX=28
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
+
+log -header "Checking whitebox_timing module"
+select -module whitebox_timing
+select -assert-count 1 t:$specify2
+select -assert-count 1 r:FULL=1'0
+select -assert-count 1 r:SRC_DST_PEN=1'0
+select -assert-count 1 r:SRC_DST_POL=1'0
+select -assert-count 1 r:T_RISE_MIN=29
+select -assert-count 1 r:T_RISE_TYP=29
+select -assert-count 1 r:T_RISE_MAX=29
+select -assert-count 1 r:T_FALL_MIN=29
+select -assert-count 1 r:T_FALL_TYP=29
+select -assert-count 1 r:T_FALL_MAX=29
+select -assert-count 1 r:SRC_WIDTH=1
+select -assert-count 1 r:DST_WIDTH=1
