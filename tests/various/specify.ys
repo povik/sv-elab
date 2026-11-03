@@ -1,4 +1,4 @@
-logger -expect error ".*expected one, two, three, six, or twelve delay values assigned to module path.*" 1
+test_slangdiag -expect "expected one, two, three, six, or twelve delay values assigned to module path"
 read_slang --keep-hierarchy <<EOT
 module delays_4(input a, output q);
   assign q = ~a;
