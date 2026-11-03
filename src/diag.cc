@@ -285,7 +285,7 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setSeverity(ReferenceAcrossKeptHierBoundary, DiagnosticSeverity::Error);
 	engine.setMessage(NoteModuleBlackboxBecauseAttribute, "module '{}' is a blackbox because of attribute");
 	engine.setSeverity(NoteModuleBlackboxBecauseAttribute, DiagnosticSeverity::Note);
-	engine.setMessage(NoteModuleBlackboxBecauseEmpty, "module '{}'' is a blackbox because of empty body");
+	engine.setMessage(NoteModuleBlackboxBecauseEmpty, "module '{}' is a blackbox because of empty body");
 	engine.setSeverity(NoteModuleBlackboxBecauseEmpty, DiagnosticSeverity::Note);
 	engine.setMessage(NoteModuleNotDissolvedBecauseBlackbox, "instance of module '{}' will not dissolve because the module is a blackbox");
 	engine.setSeverity(NoteModuleNotDissolvedBecauseBlackbox, DiagnosticSeverity::Note);

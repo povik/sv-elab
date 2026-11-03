@@ -394,3 +394,42 @@ async2sync
 equiv_make async07_gold async07_gate async07_equiv
 equiv_induct async07_equiv
 equiv_status -assert
+
+design -reset
+read_slang <<EOF
+module async_rstonly_gate(input logic clk, input logic rst, input logic we,
+					input logic [7:0] d, output logic [7:0] q, output logic [7:0] r);
+	logic [7:0] k;
+	always_ff @(posedge clk, posedge rst) begin
+		if (rst) begin
+			k <= 8'h55;
+			r <= 8'h00;
+		end else if (we) begin
+			r <= d;
+		end
+	end
+	assign q = k;
+endmodule
+EOF
+
+read_verilog <<EOF
+module async_rstonly_gold(input clk, input rst, input we,
+					input [7:0] d, output [7:0] q, output reg [7:0] r);
+	reg [7:0] k;
+	always @(posedge clk, posedge rst) begin
+		if (rst) begin
+			k <= 8'h55;
+			r <= 8'h00;
+		end else if (we) begin
+			r <= d;
+		end
+	end
+	assign q = k;
+endmodule
+EOF
+
+proc
+async2sync
+equiv_make async_rstonly_gold async_rstonly_gate async_rstonly_equiv
+equiv_induct async_rstonly_equiv
+equiv_status -assert

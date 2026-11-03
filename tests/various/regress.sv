@@ -349,3 +349,26 @@ module r29(input clk, input rst, input d, output reg q);
 		if (rst == 1) q <= 1'b0;
 		else q <= d;
 endmodule
+
+// commit dc07ede8 bmux lowering with Sx in pattern
+module r30(input logic [1:0] sel, output logic [1:0] y);
+	always_comb begin
+		y = 2;
+		casez (sel)
+			2'b10: y = 0;
+			2'bxx: y = 1;
+			2'b01: y = 3;
+		endcase
+	end
+endmodule
+
+module r31;
+	logic [7:0] q;
+	initial begin
+		int i = 0;
+		while (i < 4) begin
+			q[i] = 1;
+			i = i + 1;
+		end
+	end
+endmodule

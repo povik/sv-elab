@@ -7,6 +7,7 @@
 #pragma once
 
 #include "diag.h"
+#include "slang/numeric/SVInt.h"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -154,7 +155,7 @@ struct SwitchHelper
 
 					bool skip_pattern = false;
 					for (uint64_t i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0)) {
+						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
 							skip_pattern = true;
 							break;
 						}
@@ -196,6 +197,128 @@ struct SwitchHelper
 		return true;
 	}
 
+	bool detect_bmux_criteria()
+	{
+		int full_width = dispatch.size();
+		int width = full_width;
+		while (width > 0 && dispatch[width - 1] == ir::S0)
+			width--;
+		if (width == 0)
+			return false;
+
+		size_t no_of_covered_cases = 0;
+		for (auto &[case1, _target, _updates] : branch_updates) {
+			if (case1.compare.empty()) {
+				break;
+			} else {
+				for (auto &pat : case1.compare) {
+					if (pat.size() < width)
+						continue;
+
+					bool skip_pattern = false;
+					for (int i = width; i < pat.size(); i++) {
+						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
+							if (!pat.bits[i].is_const())
+								return false;
+							skip_pattern = true;
+							break;
+						}
+					}
+					if (skip_pattern)
+						continue;
+
+					if (!pat.is_fully_const())
+						return false;
+
+					no_of_covered_cases++;
+				}
+			}
+		}
+
+		return width <= 24 &&
+			   (no_of_covered_cases > (1 << 24) || ((no_of_covered_cases * 4) >> width) >= 1);
+	}
+
+	ir::Value emit_bmux(
+			NetlistContext &netlist, VariableChunk chunk, ir::Value background, bool full_case)
+	{
+		int full_width = dispatch.size();
+		int width = full_width;
+		while (width > 0 && dispatch[width - 1] == ir::S0)
+			width--;
+		ir::Value bmux_a;
+
+		if (full_case)
+			bmux_a = ir::Value(ir::Sx, background.width() << width);
+		else
+			bmux_a = background.repeat(1 << width);
+
+		for (auto it = branch_updates.rbegin(); it != branch_updates.rend(); it++) {
+			auto &[case1, target, updates] = *it;
+
+			ir::Value chunk_updated;
+			for (int i = 0; i < chunk.bitwidth(); i++) {
+				auto lb = std::lower_bound(target.begin(), target.end(), chunk[i]);
+				bool exists = (lb != target.end() && *lb == chunk[i]);
+				if (exists)
+					chunk_updated.append(updates[lb - target.begin()]);
+				else
+					chunk_updated.append(background[i]);
+			}
+
+			if (case1.compare.empty()) {
+				bmux_a = chunk_updated.repeat(1 << width);
+			} else {
+				for (auto &pat : case1.compare) {
+					if (pat.size() < width)
+						continue;
+
+					bool ignore_pattern = false;
+					for (int i = width; i < pat.size(); i++) {
+						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
+							assert(pat.bits[i].is_const());
+							ignore_pattern = true;
+							break;
+						}
+					}
+					if (ignore_pattern)
+						continue;
+
+					uint64_t base = 0;
+					uint64_t dc_mask = 0;
+
+					for (int i = 0; i < width; i++) {
+						auto bit = pat.bits[i];
+						if (bit.is_wildcard()) {
+							dc_mask |= ((uint64_t)1) << i;
+						} else if (pat.bits[i] == PatternBit(ir::S1)) {
+							base |= ((uint64_t)1) << i;
+						} else if (pat.bits[i] == PatternBit(ir::S0)) {
+							// do nothing
+						} else if (pat.bits[i] == PatternBit(ir::Sx)) {
+							ignore_pattern = true;
+						} else {
+							// We should not reach this point
+							// with a non-constant pattern
+							assert_invariant(false && "unreachable");
+						}
+					}
+					if (ignore_pattern)
+						continue;
+
+					for (uint64_t dc_val = 0;; dc_val = (((dc_val | ~dc_mask) + 1) & dc_mask)) {
+						uint64_t base_idx = (base | dc_val) * chunk.bitwidth();
+						for (uint64_t offset = 0; offset < chunk.bitwidth(); offset++)
+							bmux_a[base_idx + offset] = chunk_updated[offset];
+						if (dc_val == dc_mask)
+							break;
+					}
+				}
+			}
+		}
+		return netlist.Bmux(bmux_a, dispatch.extract(0, width));
+	}
+
 	void finish(NetlistContext &netlist, bool full_case = false,
 			[[maybe_unused]] bool parallel_case = false)
 	{
@@ -226,9 +349,7 @@ struct SwitchHelper
 				vstate.set(chunk, ir::Value(ir::Sx, chunk.bitwidth()));
 		}
 
-		for (auto it = branch_updates.rbegin(); it != branch_updates.rend(); it++) {
-			auto &[info, target, updates] = *it;
-
+		if (detect_bmux_criteria()) {
 			int done = 0;
 			for (auto chunk : updated_anybranch.chunks()) {
 				if (eos_variables.count(chunk.variable)) {
@@ -236,18 +357,34 @@ struct SwitchHelper
 					continue;
 				}
 
-				ir::Value chunk_updated;
-				for (uint64_t i = 0; i < chunk.bitwidth(); i++) {
-					auto lb = std::lower_bound(target.begin(), target.end(), chunk[i]);
-					bool exists = (lb != target.end() && *lb == chunk[i]);
-					if (exists)
-						chunk_updated.append(updates[lb - target.begin()]);
-					else
-						chunk_updated.append(background[done + i]);
-				}
-				vstate.set(chunk,
-						netlist.Mux(vstate.evaluate(netlist, chunk), chunk_updated, info.cond));
+				vstate.set(chunk, emit_bmux(netlist, chunk,
+										  background.extract(done, chunk.bitwidth()), full_case));
 				done += chunk.bitwidth();
+			}
+		} else {
+			for (auto it = branch_updates.rbegin(); it != branch_updates.rend(); it++) {
+				auto &[info, target, updates] = *it;
+
+				int done = 0;
+				for (auto chunk : updated_anybranch.chunks()) {
+					if (eos_variables.count(chunk.variable)) {
+						done += chunk.bitwidth();
+						continue;
+					}
+
+					ir::Value chunk_updated;
+					for (uint64_t i = 0; i < chunk.bitwidth(); i++) {
+						auto lb = std::lower_bound(target.begin(), target.end(), chunk[i]);
+						bool exists = (lb != target.end() && *lb == chunk[i]);
+						if (exists)
+							chunk_updated.append(updates[lb - target.begin()]);
+						else
+							chunk_updated.append(background[done + i]);
+					}
+					vstate.set(chunk,
+							netlist.Mux(vstate.evaluate(netlist, chunk), chunk_updated, info.cond));
+					done += chunk.bitwidth();
+				}
 			}
 		}
 
@@ -724,7 +861,7 @@ public:
 		unroll_limit.enter_unrolling();
 		while (true) {
 			ir::Value cv = netlist.ReduceBool(eval(stmt.cond));
-			ir::Value break_rv = context.vstate.evaluate(netlist, guard1.flag);
+			ir::Value break_rv = context.substitute_rvalue(guard1.flag);
 			ir::Value joint_break = netlist.LogicOr(netlist.LogicNot(cv), break_rv);
 
 			if (!joint_break.is_fully_const()) {

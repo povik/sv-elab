@@ -36,7 +36,6 @@ extern slang::DiagCode AssertionUnsupported;
 extern slang::DiagCode LangFeatureUnsupported;
 extern slang::DiagCode UnsupportedLhs;
 extern slang::DiagCode ArgumentTypeUnsupported;
-extern slang::DiagCode LangFeatureUnsupported;
 extern slang::DiagCode MultiportUnsupported;
 extern slang::DiagCode UnsupportedBlackboxConnection;
 extern slang::DiagCode UnsupportedPortDirection;

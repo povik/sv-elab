@@ -13,7 +13,7 @@ _VARIOUS_TESTS = [
     "mem_inference", "meminit", "pragmas", "readmem", "readmem_diag", "regress",
     "stringattrs", "stringparams", "timescale", "tranif", "top_attr",
     "unimplemented", "unknown_cells", "toplevel_intf", "wait_test", "expect_test",
-    "program_test", "synthesis_define",
+    "program_test", "synthesis_define", "issue400"
 ]
 
 _UNIT_DATA = glob(["unit/*.sv"])

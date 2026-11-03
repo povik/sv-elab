@@ -5,6 +5,7 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 // clang-format off
+#include <inttypes.h>
 #include <string.h>
 #include <cstdlib>
 #include <cstdio>
@@ -483,10 +484,10 @@ ir::Value inside_comparison(EvalContext &eval, ir::Value left,
 		const auto& vexpr = expr.as<ast::ValueRangeExpression>();
 		require(expr, vexpr.rangeKind == ast::ValueRangeKind::Simple);
 		ast_invariant(expr, vexpr.left().type->isMatching(*vexpr.right().type));
-		return eval.netlist.LogicAnd(
-			eval.netlist.Ge(left, eval(vexpr.left()), vexpr.left().type->isSigned()),
-			eval.netlist.Le(left, eval(vexpr.right()), vexpr.right().type->isSigned())
-		);
+		// One statement each, as the evaluation order of function arguments is unspecified
+		ir::Net lower = eval.netlist.Ge(left, eval(vexpr.left()), vexpr.left().type->isSigned());
+		ir::Net upper = eval.netlist.Le(left, eval(vexpr.right()), vexpr.right().type->isSigned());
+		return eval.netlist.LogicAnd(lower, upper);
 	} else {
 		if (expr.type->isIntegral()) {
 			auto const_result = expr.eval(eval.const_);
@@ -531,6 +532,9 @@ void VariableState::set(VariableBits lhs, ir::Value value)
 
 	for (uint64_t i = 0; i < lhs.bitwidth(); i++) {
 		VariableBit bit = lhs[i];
+
+		if (visible_assignments.count(bit) && visible_assignments.at(bit) == value[i])
+			continue;
 
 		if (!pending.revert.count(bit) && !pending.revert_erase.count(bit)) {
 			if (visible_assignments.count(bit))
@@ -1586,11 +1590,11 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			require(expr, ternary.conditions.size() == 1);
 			require(expr, !ternary.conditions[0].pattern);
 
-			ret = netlist.Mux(
-				(*this)(ternary.right()),
-				(*this)(ternary.left()),
-				netlist.ReduceBool((*this)(*(ternary.conditions[0].expr)))
-			);
+			// One statement each, as the evaluation order of function arguments is unspecified
+			ir::Net cond = netlist.ReduceBool((*this)(*(ternary.conditions[0].expr)));
+			ir::Value when_true = (*this)(ternary.left());
+			ir::Value when_false = (*this)(ternary.right());
+			ret = netlist.Mux(when_false, when_true, cond);
 		}
 		break;
 	case ast::ExpressionKind::Replication:
@@ -1911,6 +1915,10 @@ public:
 		std::vector<Aload> aloads;
 		ir::Value prior_branch_taken;
 
+		// Include in the driven set variables assigned from the sync branch
+		// or any async branch
+		VariableBits driven;
+
 		for (auto &async_branch : async) {
 			ir::Value sig = netlist.convert_static(async_branch.trigger);
 			assert_invariant(sig.size() == 1);
@@ -1929,6 +1937,9 @@ public:
 #ifndef SLANG_MUX_LOWERING
 			branch.copy_case_tree_into(proc->root_case);
 #endif
+
+			driven.append(branch.all_driven());
+
 			aloads.push_back({
 				sig.as_net(), async_branch.polarity, branch.vstate, &async_branch.body
 			});
@@ -1959,8 +1970,9 @@ public:
 			sync_branch.copy_case_tree_into(proc->root_case);
 #endif
 
-			// FIXME: ignores variables not driven from the sync procedure
-			VariableBits driven = sync_branch.all_driven();
+			driven.append(sync_branch.all_driven());
+			driven.sort_and_unify();
+
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
 				ir::Value assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
@@ -2331,6 +2343,10 @@ public:
 			std::vector<BackendGraphBuilderBase::ParameterValue> params;
 			sym.body.visit(ast::makeVisitor(
 					[&](auto &, const ast::ParameterSymbol &symbol) {
+						// Local parameters are not settable externally
+						if (symbol.isLocalParam())
+							return;
+
 						auto converted = netlist.convert_const(symbol.getValue(), symbol.location);
 						if (converted) {
 							params.push_back({std::string(symbol.name), *converted,
@@ -2630,11 +2646,12 @@ public:
 				require(ternary, !ternary.conditions[0].pattern);
 				ir::Value enable = netlist.eval(*(ternary.conditions[0].expr));
 				auto lvalue = netlist.eval.lhs(expr.left());
-				auto cell = canvas->addTribuf(netlist.backend->new_id(),
-					(lhs_z ? netlist.eval(ternary.right()) : netlist.eval(ternary.left())).raw(),
-					(lhs_z ? netlist.LogicNot(enable) : netlist.ReduceBool(enable)).raw(),
-					netlist.convert_static(lvalue)
-				);
+				// One statement each, as the evaluation order of function arguments is unspecified
+				ir::Value data = lhs_z ? netlist.eval(ternary.right()) : netlist.eval(ternary.left());
+				ir::Net tri_enable = lhs_z ? netlist.LogicNot(enable) : netlist.ReduceBool(enable);
+				auto id = netlist.backend->new_id();
+				ir::Value target = netlist.convert_static(lvalue);
+				auto cell = canvas->addTribuf(id, data.raw(), tri_enable.raw(), target);
 				netlist.register_driven(lvalue);
 				transfer_attrs(netlist, symbol, cell);
 				return;

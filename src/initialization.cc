@@ -4,6 +4,8 @@
 // Copyright Martin Povišer <povik@cutebit.org>
 // Distributed under the terms of the ISC license, see LICENSE
 //
+#include <cstdint>
+
 #include "slang/ast/ASTVisitor.h"
 #include "slang/ast/SemanticFacts.h"
 #include "slang/ast/symbols/BlockSymbols.h"

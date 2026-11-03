@@ -58,6 +58,7 @@ set(ALL_TESTS
     various/issue300.ys
     various/issue354.ys
     various/issue372.ys
+    various/issue400.ys
     various/issue50.ys
     various/mem_inference.ys
     various/meminit.ys

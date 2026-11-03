@@ -7,6 +7,8 @@
 
 #include "ir.h"
 
+#include <cstdint>
+
 namespace ir {
 
 Value Net::repeat(uint64_t width)

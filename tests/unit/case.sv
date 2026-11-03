@@ -30,3 +30,33 @@ module top(input logic [3:0] w);
 			assert(m1 === 3);
 	end
 endmodule
+
+module top2(input logic [1:0] sel, output logic [1:0] y);
+	always_comb begin
+		y = 2'd3;
+		casez ({1'b0, sel})
+			3'b000: y = 2'd0;
+			3'b?10: y = 2'd1;
+		endcase
+	end
+
+	always_comb
+	if (^sel !== 'x) begin
+		if (sel == 2)
+			assert(y === 1);
+		else if (sel == 0)
+			assert(y === 0);
+		else
+			assert(y === 3);
+	end
+endmodule
+
+module top3(input logic [1:0] sel, output logic [1:0] y);
+	// must not cause a logic loop
+	always_comb
+	unique case (sel)
+		2'd0: y = 0;
+		2'd1: y = 1;
+		2'd3: y = 3;
+	endcase
+endmodule

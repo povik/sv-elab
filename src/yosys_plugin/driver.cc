@@ -5,7 +5,16 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 
-#include "slang/driver/Driver.h"
+#include <string.h>
+
+#include <cassert>
+#include <cstddef>
+#include <exception>
+#include <istream>
+#include <optional>
+#include <string>
+#include <string_view>
+
 #include "slang/ast/ASTSerializer.h"
 #include "slang/ast/ASTVisitor.h"
 #include "slang/ast/Compilation.h"
@@ -15,10 +24,14 @@
 #include "slang/ast/symbols/InstanceSymbols.h"
 #include "slang/diagnostics/CompilationDiags.h"
 #include "slang/diagnostics/DiagnosticEngine.h"
+#include "slang/diagnostics/Diagnostics.h"
 #include "slang/diagnostics/LookupDiags.h"
-#include "slang/numeric/ConstantValue.h"
+#include "slang/driver/Driver.h"
+#include "slang/numeric/SVInt.h"
 #include "slang/syntax/AllSyntax.h"
+#include "slang/syntax/SyntaxKind.h"
 #include "slang/text/Json.h"
+#include "slang/text/SourceLocation.h"
 #include "slang/text/SourceSnippet.h"
 
 #include "driver.h"
