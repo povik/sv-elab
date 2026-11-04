@@ -34,6 +34,7 @@
 #include "slang/text/SourceLocation.h"
 #include "slang/text/SourceSnippet.h"
 
+#include "driver.h"
 #include "backend_builder.h"
 #include "diag.h"
 #include "slang_frontend.h"
@@ -111,12 +112,6 @@ const std::optional<RTLIL::Const> convert_const_rtlil(
 	if (constval.bad()) {
 		// no diagnostic in this case as we assume one has been raised upstream
 		return {};
-	} else if (constval.isReal()) {
-		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "real"sv;
-		return {};
-	} else if (constval.isShortReal()) {
-		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "shortreal"sv;
-		return {};
 	} else if (constval.isUnbounded()) {
 		netlist.add_diag(diag::UnsupportedBitConversion, loc) << "unbounded symbol"sv;
 		return {};
@@ -152,6 +147,19 @@ const std::optional<RTLIL::Const> convert_const_rtlil(
 		RTLIL::Const ret = convert_svint_rtlil(constval.convertToInt().integer());
 		ret.flags |= RTLIL::CONST_FLAG_STRING;
 		return ret;
+	} else if (constval.isReal()) {
+		slang::real_t real = constval.convertToReal().real();
+		std::string str = std::to_string(real.v);
+		// see https://github.com/YosysHQ/yosys/blob/b8d84f8235d3f04af7ad669fac111740612fe7ba/frontends/verific/verific.cc#L314
+		RTLIL::Const c(str);
+		c.flags |= RTLIL::CONST_FLAG_REAL;
+		return c;
+	} else if (constval.isShortReal()) {
+		slang::shortreal_t shortreal = constval.convertToShortReal().shortReal();
+		std::string str = std::to_string(shortreal.v);
+		RTLIL::Const c(str);
+		c.flags |= RTLIL::CONST_FLAG_REAL;
+		return c;
 	} else if (constval.isNullHandle()) {
 		return {};
 	}
