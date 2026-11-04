@@ -163,7 +163,9 @@ void finalize_variable_initialization(NetlistContext &netlist)
 					auto signal = netlist.convert_static(variable);
 					for (uint64_t i = 0; i < signal.size(); i++) {
 						VariableBit vbit(variable, i);
-						if (!netlist.driven_variables.count(vbit)) {
+						ir::Trit state = netlist.initial_state.at(vbit, ir::Sx);
+						bool is_init = state == ir::S0 || state == ir::S1;
+						if (!netlist.driven_variables.count(vbit) && !is_init) {
 							undriven.append(vbit);
 						}
 					}
