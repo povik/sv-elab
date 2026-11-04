@@ -14,7 +14,7 @@ module undriven();
 	// is only initialized and is not driven so has 1 1-bit anyseq
 	reg initialized_reg = 1'b1;
 
-	// is driven but not initialized so has 1 1-bit anyseq
+	// is driven so has no anyseq
 	reg driven_reg;
 	always @* begin
 		driven_reg = 1'b0;
