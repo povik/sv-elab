@@ -2867,12 +2867,12 @@ public:
 			RTLIL::Const t_min, t_avg, t_max;
 		};
 	
-		std::optional<SpecifyTriple> eval_specify_triple(const ast::Expression &expr)
+		SpecifyTriple eval_specify_triple(const ast::Expression &expr)
 		{
 			auto eval = [&](const ast::Expression &part) -> std::optional<RTLIL::Const> {
 				auto value = part.eval(netlist.eval.const_);
 				std::optional<RTLIL::Const> result_opt = convert_const_rtlil(netlist, value, part.sourceRange.start());
-				if (!result_opt) return std::nullopt;
+				ast_invariant(part, result_opt);
 				RTLIL::Const result = *result_opt;
 				if (value.isInteger() && value.integer().isSigned())
 					result.flags |= RTLIL::CONST_FLAG_SIGNED;
@@ -2884,13 +2884,11 @@ public:
 				auto min = eval(triple.min());
 				auto typ = eval(triple.typ());
 				auto max = eval(triple.max());
-				if (!min || !typ || !max)
-					return std::nullopt;
+				ast_invariant(expr, min && typ && max);
 				return SpecifyTriple{*min, *typ, *max};
 			}
 			auto value = eval(expr);
-			if (!value)
-				return std::nullopt;
+			ast_invariant(expr, value);
 			return SpecifyTriple{*value, *value, *value};
 		}
 	#endif
@@ -2908,19 +2906,14 @@ public:
 		auto dat_expr = path.getEdgeSourceExpr();
 
 		auto count = delays.size();
-		if (count != 1 && count != 2 && count != 3 && count != 6 && count != 12) {
-			netlist.add_diag(diag::InvalidSpecifyDelayCount, path.location) << count;
-			return;
-		}
+		ast_invariant(path, count == 1 || count == 2 || count == 3 || count == 6 || count == 12);
 		
 		if (count > 2)
 			netlist.add_diag(diag::SpecifyExtraDelaysIgnored, path.location);
 
-		auto rise_triple = eval_specify_triple(*delays[0]);
+		SpecifyTriple rise_triple = eval_specify_triple(*delays[0]);
 		int fall_idx = delays.size() == 1 ? 0 : 1;
-		auto fall_triple = eval_specify_triple(*delays[fall_idx]);
-		if (!rise_triple || !fall_triple)
-			return;
+		SpecifyTriple fall_triple = eval_specify_triple(*delays[fall_idx]);
 		
 		RTLIL::IdString type = dat_expr ? ID($specify3) : ID($specify2);
 
@@ -2967,12 +2960,12 @@ public:
 					cell->setParam(ID::EDGE_EN, RTLIL::Const(edge_en, 1));
 					cell->setParam(ID::EDGE_POL, RTLIL::Const(edge_pol, 1));
 				}
-				cell->setParam(ID::T_RISE_MIN, rise_triple->t_min);
-				cell->setParam(ID::T_RISE_TYP, rise_triple->t_avg);
-				cell->setParam(ID::T_RISE_MAX, rise_triple->t_max);
-				cell->setParam(ID::T_FALL_MIN, fall_triple->t_min);
-				cell->setParam(ID::T_FALL_TYP, fall_triple->t_avg);
-				cell->setParam(ID::T_FALL_MAX, fall_triple->t_max);
+				cell->setParam(ID::T_RISE_MIN, rise_triple.t_min);
+				cell->setParam(ID::T_RISE_TYP, rise_triple.t_avg);
+				cell->setParam(ID::T_RISE_MAX, rise_triple.t_max);
+				cell->setParam(ID::T_FALL_MIN, fall_triple.t_min);
+				cell->setParam(ID::T_FALL_TYP, fall_triple.t_avg);
+				cell->setParam(ID::T_FALL_MAX, fall_triple.t_max);
 			}
 		}
 	#endif
@@ -3020,14 +3013,10 @@ public:
 		auto dst_en = args[1].condition
 				? netlist.eval(*args[1].condition) : ir::Value(ir::S1);
 
-		auto limit = eval_specify_triple(*args[2].expr);
-		if (!limit)
-			return;
-		std::optional<SpecifyTriple> limit2;
+		SpecifyTriple limit = eval_specify_triple(*args[2].expr);
+		std::optional<SpecifyTriple> limit2 = std::nullopt;
 		if (args.size() == 4) {
 			limit2 = eval_specify_triple(*args[3].expr);
-			if (!limit2)
-				return;
 		}
 		RTLIL::Const zero(0);
 		zero.flags |= RTLIL::CONST_FLAG_SIGNED;
@@ -3036,9 +3025,9 @@ public:
 		transfer_attrs(netlist, check, cell);
 
 		cell->setParam(ID::TYPE, RTLIL::Const(rule_name));
-		cell->setParam(ID::T_LIMIT_MIN, limit->t_min);
-		cell->setParam(ID::T_LIMIT_TYP, limit->t_avg);
-		cell->setParam(ID::T_LIMIT_MAX, limit->t_max);
+		cell->setParam(ID::T_LIMIT_MIN, limit.t_min);
+		cell->setParam(ID::T_LIMIT_TYP, limit.t_avg);
+		cell->setParam(ID::T_LIMIT_MAX, limit.t_max);
 		cell->setParam(ID::T_LIMIT2_MIN, limit2 ? limit2->t_min : zero);
 		cell->setParam(ID::T_LIMIT2_TYP, limit2 ? limit2->t_avg : zero);
 		cell->setParam(ID::T_LIMIT2_MAX, limit2 ? limit2->t_max : zero);
