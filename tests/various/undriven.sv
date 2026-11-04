@@ -1,4 +1,4 @@
-module undef();	
+module undriven();	
 	// has 1 1-bit anyseq
 	wire  single_wire;
 	// has 1 1-bit anyseq
