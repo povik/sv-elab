@@ -58,6 +58,7 @@ set(ALL_TESTS
     various/issue300.ys
     various/issue354.ys
     various/issue372.ys
+    various/issue400.ys
     various/issue50.ys
     various/mem_inference.ys
     various/meminit.ys
@@ -65,6 +66,7 @@ set(ALL_TESTS
     various/readmem.ys
     various/readmem_diag.ys
     various/regress.ys
+    various/specify.ys
     various/stringattrs.ys
     various/stringparams.ys
     various/timescale.ys

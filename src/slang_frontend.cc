@@ -5,6 +5,7 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 // clang-format off
+#include <inttypes.h>
 #include <string.h>
 #include <cstdlib>
 #include <cstdio>
@@ -68,6 +69,8 @@
 #include "slang/util/Util.h"
 
 #ifndef SLANG_NO_YOSYS
+#include "yosys_plugin/driver.h"
+
 #include "kernel/yosys_common.h"
 #include "kernel/log.h"
 #include "kernel/bitpattern.h"
@@ -485,10 +488,10 @@ ir::Value inside_comparison(EvalContext &eval, ir::Value left,
 		const auto& vexpr = expr.as<ast::ValueRangeExpression>();
 		require(expr, vexpr.rangeKind == ast::ValueRangeKind::Simple);
 		ast_invariant(expr, vexpr.left().type->isMatching(*vexpr.right().type));
-		return eval.netlist.LogicAnd(
-			eval.netlist.Ge(left, eval(vexpr.left()), vexpr.left().type->isSigned()),
-			eval.netlist.Le(left, eval(vexpr.right()), vexpr.right().type->isSigned())
-		);
+		// One statement each, as the evaluation order of function arguments is unspecified
+		ir::Net lower = eval.netlist.Ge(left, eval(vexpr.left()), vexpr.left().type->isSigned());
+		ir::Net upper = eval.netlist.Le(left, eval(vexpr.right()), vexpr.right().type->isSigned());
+		return eval.netlist.LogicAnd(lower, upper);
 	} else {
 		if (expr.type->isIntegral()) {
 			auto const_result = expr.eval(eval.const_);
@@ -533,6 +536,9 @@ void VariableState::set(VariableBits lhs, ir::Value value)
 
 	for (uint64_t i = 0; i < lhs.bitwidth(); i++) {
 		VariableBit bit = lhs[i];
+
+		if (visible_assignments.count(bit) && visible_assignments.at(bit) == value[i])
+			continue;
 
 		if (!pending.revert.count(bit) && !pending.revert_erase.count(bit)) {
 			if (visible_assignments.count(bit))
@@ -1588,11 +1594,11 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			require(expr, ternary.conditions.size() == 1);
 			require(expr, !ternary.conditions[0].pattern);
 
-			ret = netlist.Mux(
-				(*this)(ternary.right()),
-				(*this)(ternary.left()),
-				netlist.ReduceBool((*this)(*(ternary.conditions[0].expr)))
-			);
+			// One statement each, as the evaluation order of function arguments is unspecified
+			ir::Net cond = netlist.ReduceBool((*this)(*(ternary.conditions[0].expr)));
+			ir::Value when_true = (*this)(ternary.left());
+			ir::Value when_false = (*this)(ternary.right());
+			ret = netlist.Mux(when_false, when_true, cond);
 		}
 		break;
 	case ast::ExpressionKind::Replication:
@@ -1913,6 +1919,10 @@ public:
 		std::vector<Aload> aloads;
 		ir::Value prior_branch_taken;
 
+		// Include in the driven set variables assigned from the sync branch
+		// or any async branch
+		VariableBits driven;
+
 		for (auto &async_branch : async) {
 			ir::Value sig = netlist.convert_static(async_branch.trigger);
 			assert_invariant(sig.size() == 1);
@@ -1931,6 +1941,9 @@ public:
 #ifndef SLANG_MUX_LOWERING
 			branch.copy_case_tree_into(proc->root_case);
 #endif
+
+			driven.append(branch.all_driven());
+
 			aloads.push_back({
 				sig.as_net(), async_branch.polarity, branch.vstate, &async_branch.body
 			});
@@ -1961,8 +1974,9 @@ public:
 			sync_branch.copy_case_tree_into(proc->root_case);
 #endif
 
-			// FIXME: ignores variables not driven from the sync procedure
-			VariableBits driven = sync_branch.all_driven();
+			driven.append(sync_branch.all_driven());
+			driven.sort_and_unify();
+
 			for (VariableChunk driven_chunk : driven.chunks()) {
 				const ast::Type *type = &driven_chunk.variable.get_symbol()->getType();
 				ir::Value assigned = sync_branch.vstate.evaluate(netlist, driven_chunk);
@@ -2333,6 +2347,10 @@ public:
 			std::vector<BackendGraphBuilderBase::ParameterValue> params;
 			sym.body.visit(ast::makeVisitor(
 					[&](auto &, const ast::ParameterSymbol &symbol) {
+						// Local parameters are not settable externally
+						if (symbol.isLocalParam())
+							return;
+
 						auto converted = netlist.convert_const(symbol.getValue(), symbol.location);
 						if (converted) {
 							params.push_back({std::string(symbol.name), *converted,
@@ -2632,11 +2650,12 @@ public:
 				require(ternary, !ternary.conditions[0].pattern);
 				ir::Value enable = netlist.eval(*(ternary.conditions[0].expr));
 				auto lvalue = netlist.eval.lhs(expr.left());
-				auto cell = canvas->addTribuf(netlist.backend->new_id(),
-					(lhs_z ? netlist.eval(ternary.right()) : netlist.eval(ternary.left())).raw(),
-					(lhs_z ? netlist.LogicNot(enable) : netlist.ReduceBool(enable)).raw(),
-					netlist.convert_static(lvalue)
-				);
+				// One statement each, as the evaluation order of function arguments is unspecified
+				ir::Value data = lhs_z ? netlist.eval(ternary.right()) : netlist.eval(ternary.left());
+				ir::Net tri_enable = lhs_z ? netlist.LogicNot(enable) : netlist.ReduceBool(enable);
+				auto id = netlist.backend->new_id();
+				ir::Value target = netlist.convert_static(lvalue);
+				auto cell = canvas->addTribuf(id, data.raw(), tri_enable.raw(), target);
 				netlist.register_driven(lvalue);
 				transfer_attrs(netlist, symbol, cell);
 				return;
@@ -2843,7 +2862,191 @@ public:
 	void handle(const ast::LetDeclSymbol&) {}
 	void handle(const ast::SpecparamSymbol&) {}
 	void handle(const ast::DefParamSymbol&) {}
-	void handle(const ast::SpecifyBlockSymbol&) {}
+	void handle(const ast::SpecifyBlockSymbol &sym) {
+		visitDefault(sym);
+	}
+
+	#ifndef SLANG_NO_YOSYS
+		struct SpecifyTriple {
+			RTLIL::Const t_min, t_avg, t_max;
+		};
+	
+		SpecifyTriple eval_specify_triple(const ast::Expression &expr)
+		{
+			auto eval = [&](const ast::Expression &part) -> std::optional<RTLIL::Const> {
+				auto value = part.eval(netlist.eval.const_);
+				std::optional<RTLIL::Const> result_opt = convert_const_rtlil(netlist, value, part.sourceRange.start());
+				ast_invariant(part, result_opt);
+				RTLIL::Const result = *result_opt;
+				if (value.isInteger() && value.integer().isSigned())
+					result.flags |= RTLIL::CONST_FLAG_SIGNED;
+				return result;
+			};
+	
+			if (expr.kind == ast::ExpressionKind::MinTypMax) {
+				auto &triple = expr.as<ast::MinTypMaxExpression>();
+				auto min = eval(triple.min());
+				auto typ = eval(triple.typ());
+				auto max = eval(triple.max());
+				ast_invariant(expr, min && typ && max);
+				return SpecifyTriple{*min, *typ, *max};
+			}
+			auto value = eval(expr);
+			ast_invariant(expr, value);
+			return SpecifyTriple{*value, *value, *value};
+		}
+	#endif
+	
+	void handle(const ast::TimingPathSymbol &path)
+	{
+	#ifndef SLANG_NO_YOSYS
+		using Path = ast::TimingPathSymbol;
+
+		auto en_expr = path.getConditionExpr();
+		auto src_exprs = path.getInputs();
+		auto dest_exprs = path.getOutputs();
+		auto oper = path.connectionKind;
+		auto delays = path.getDelays();
+		auto dat_expr = path.getEdgeSourceExpr();
+
+		auto count = delays.size();
+		ast_invariant(path, count == 1 || count == 2 || count == 3 || count == 6 || count == 12);
+		
+		if (count > 2)
+			netlist.add_diag(diag::SpecifyExtraDelaysIgnored, path.location);
+
+		SpecifyTriple rise_triple = eval_specify_triple(*delays[0]);
+		int fall_idx = delays.size() == 1 ? 0 : 1;
+		SpecifyTriple fall_triple = eval_specify_triple(*delays[fall_idx]);
+		
+		RTLIL::IdString type = dat_expr ? ID($specify3) : ID($specify2);
+
+		auto en = en_expr ? netlist.eval(*en_expr) : ir::Value(ir::S1);
+		auto dat = dat_expr ? std::optional(netlist.eval(*dat_expr)) : std::nullopt;
+		bool full = oper == Path::ConnectionKind::Full;	
+
+		auto src_dst_pen = path.polarity != Path::Polarity::Unknown;
+		auto src_dst_pol = path.polarity == Path::Polarity::Positive;
+
+		auto edge_en = path.edgeIdentifier != ast::EdgeKind::None;
+		auto edge_pol = path.edgeIdentifier == ast::EdgeKind::PosEdge;
+
+		auto dat_dst_pen = path.edgePolarity != Path::Polarity::Unknown;
+		auto dat_dst_pol = path.edgePolarity == Path::Polarity::Positive;
+		
+		for (auto &src_e : src_exprs) {
+			for (auto &dst_e : dest_exprs) {
+
+				auto src = netlist.eval(*src_e);
+				auto dst = netlist.eval(*dst_e);			
+				if (!full && src.size() != dst.size()) {
+					netlist.add_diag(diag::SpecifyParallelWidthMismatch, slang::SourceRange(src_e->sourceRange.start(), dst_e->sourceRange.end()))
+							<< src.size() << dst.size();
+					return;
+				}
+				
+				auto cell = netlist.backend->canvas->addCell(
+							netlist.backend->new_id(), type);
+				transfer_attrs(netlist, path, cell);
+				
+				cell->setPort(ID::SRC, src);
+				cell->setPort(ID::DST, dst);
+				cell->setPort(ID::EN, en);
+				cell->setParam(ID::SRC_WIDTH, int(src.size()));
+				cell->setParam(ID::DST_WIDTH, int(dst.size()));
+				cell->setParam(ID::FULL, RTLIL::Const(full, 1));
+				cell->setParam(ID::SRC_DST_PEN, RTLIL::Const(src_dst_pen, 1));
+				cell->setParam(ID::SRC_DST_POL, RTLIL::Const(src_dst_pol, 1));
+				if (dat) {
+					cell->setPort(ID::DAT, *dat);
+					cell->setParam(ID::DAT_DST_PEN, RTLIL::Const(dat_dst_pen, 1));
+					cell->setParam(ID::DAT_DST_POL, RTLIL::Const(dat_dst_pol, 1));
+					cell->setParam(ID::EDGE_EN, RTLIL::Const(edge_en, 1));
+					cell->setParam(ID::EDGE_POL, RTLIL::Const(edge_pol, 1));
+				}
+				cell->setParam(ID::T_RISE_MIN, rise_triple.t_min);
+				cell->setParam(ID::T_RISE_TYP, rise_triple.t_avg);
+				cell->setParam(ID::T_RISE_MAX, rise_triple.t_max);
+				cell->setParam(ID::T_FALL_MIN, fall_triple.t_min);
+				cell->setParam(ID::T_FALL_TYP, fall_triple.t_avg);
+				cell->setParam(ID::T_FALL_MAX, fall_triple.t_max);
+			}
+		}
+	#endif
+	}
+
+	void handle(const ast::SystemTimingCheckSymbol &check)
+	{
+#ifndef SLANG_NO_YOSYS
+		auto &syntax = check.getSyntax()
+				->as<slang::syntax::SystemTimingCheckSyntax>();
+		std::string rule_name(syntax.name.valueText());
+		if (rule_name != "$setup" && rule_name != "$hold" && rule_name != "$setuphold" &&
+				rule_name != "$removal" && rule_name != "$recovery" && rule_name != "$recrem" &&
+				rule_name != "$skew" && rule_name != "$timeskew" && rule_name != "$fullskew" &&
+				rule_name != "$nochange") {
+			netlist.add_diag(diag::SpecifyRuleUnsupported, check.location) << rule_name;
+			return;
+		}
+
+		auto args = check.getArguments();
+		if (args.size() != 3 && args.size() != 4) {
+			netlist.add_diag(diag::SpecifyRuleArgumentsUnsupported, check.location) << rule_name;
+			return;
+		}
+		for (const auto &arg : args) {
+			if (!arg.expr) {
+				netlist.add_diag(diag::SpecifyRuleMissingArgument, check.location) << rule_name;
+				return;
+			}
+			if (!arg.edgeDescriptors.empty() || arg.edge == ast::EdgeKind::BothEdges) {
+				netlist.add_diag(diag::SpecifyRuleEdgeUnsupported, arg.expr->sourceRange) << rule_name;
+				return;
+			}
+		}
+
+		auto src_pen = RTLIL::Const(args[0].edge != ast::EdgeKind::None, 1);
+		auto src_pol = RTLIL::Const(args[0].edge == ast::EdgeKind::PosEdge, 1);
+		auto src_expr = netlist.eval(*args[0].expr);
+		auto src_en = args[0].condition
+				? netlist.eval(*args[0].condition) : ir::Value(ir::S1);
+
+		auto dst_pen = RTLIL::Const(args[1].edge != ast::EdgeKind::None, 1);
+		auto dst_pol = RTLIL::Const(args[1].edge == ast::EdgeKind::PosEdge, 1);
+		auto dst_expr = netlist.eval(*args[1].expr);
+		auto dst_en = args[1].condition
+				? netlist.eval(*args[1].condition) : ir::Value(ir::S1);
+
+		SpecifyTriple limit = eval_specify_triple(*args[2].expr);
+		std::optional<SpecifyTriple> limit2 = std::nullopt;
+		if (args.size() == 4) {
+			limit2 = eval_specify_triple(*args[3].expr);
+		}
+		RTLIL::Const zero(0);
+		zero.flags |= RTLIL::CONST_FLAG_SIGNED;
+
+		auto cell = netlist.backend->canvas->addCell(netlist.backend->new_id(), ID($specrule));
+		transfer_attrs(netlist, check, cell);
+
+		cell->setParam(ID::TYPE, RTLIL::Const(rule_name));
+		cell->setParam(ID::T_LIMIT_MIN, limit.t_min);
+		cell->setParam(ID::T_LIMIT_TYP, limit.t_avg);
+		cell->setParam(ID::T_LIMIT_MAX, limit.t_max);
+		cell->setParam(ID::T_LIMIT2_MIN, limit2 ? limit2->t_min : zero);
+		cell->setParam(ID::T_LIMIT2_TYP, limit2 ? limit2->t_avg : zero);
+		cell->setParam(ID::T_LIMIT2_MAX, limit2 ? limit2->t_max : zero);
+		cell->setParam(ID::SRC_PEN, src_pen);
+		cell->setParam(ID::SRC_POL, src_pol);
+		cell->setParam(ID::DST_PEN, dst_pen);
+		cell->setParam(ID::DST_POL, dst_pol);
+		cell->setPort(ID::SRC_EN, src_en);
+		cell->setPort(ID::SRC, src_expr);
+		cell->setPort(ID::DST_EN, dst_en);
+		cell->setPort(ID::DST, dst_expr);
+		cell->setParam(ID::SRC_WIDTH, int(src_expr.size()));
+		cell->setParam(ID::DST_WIDTH, int(dst_expr.size()));
+#endif
+	}
 
 	void handle(const ast::StatementBlockSymbol &sym)
 	{

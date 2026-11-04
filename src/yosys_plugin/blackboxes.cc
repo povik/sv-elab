@@ -302,6 +302,8 @@ void export_blackbox_to_rtlil(
 				wire->port_id = mod->ports.size();
 			},
 			[&](auto &, const ast::ParameterSymbol &param) {
+				if (param.isLocalParam())
+					return;
 				mod->avail_parameters(intern_id(mod, RTLIL::escape_id(std::string{param.name})));
 			},
 			[&](auto &, const ast::InstanceSymbol &) {}));

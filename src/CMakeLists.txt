@@ -19,6 +19,7 @@ add_library(yosys-slang ${LIBRARY_TYPE}
     yosys_plugin/cases.cc
     yosys_plugin/cases.h
     yosys_plugin/driver.cc
+    yosys_plugin/driver.h
     yosys_plugin/ir.cc
     yosys_plugin/ir.h
     yosys_plugin/sva.cc

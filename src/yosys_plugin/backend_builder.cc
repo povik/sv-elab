@@ -5,8 +5,14 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 
+#include <cstdint>
+#include <limits>
 #include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
 
+#include "kernel/log.h"
 #include "kernel/rtlil.h"
 
 #include "backend_builder.h"

@@ -13,6 +13,7 @@
 #include "slang/ast/symbols/VariableSymbols.h"
 #include "slang/ast/types/NetType.h"
 #include "slang/ast/types/Type.h"
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>

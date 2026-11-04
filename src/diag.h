@@ -36,7 +36,6 @@ extern slang::DiagCode AssertionUnsupported;
 extern slang::DiagCode LangFeatureUnsupported;
 extern slang::DiagCode UnsupportedLhs;
 extern slang::DiagCode ArgumentTypeUnsupported;
-extern slang::DiagCode LangFeatureUnsupported;
 extern slang::DiagCode MultiportUnsupported;
 extern slang::DiagCode UnsupportedBlackboxConnection;
 extern slang::DiagCode UnsupportedPortDirection;
@@ -93,6 +92,13 @@ extern slang::DiagCode HierarchicalRefOutsideModulesUnsupported;
 extern slang::DiagCode HighImpedanceUnsupported;
 extern slang::DiagCode IfacePortUnsupported;
 extern slang::DiagCode OptionRequiresStandaloneSlang;
+extern slang::DiagCode InvalidSpecifyDelayCount;
+extern slang::DiagCode SpecifyExtraDelaysIgnored;
+extern slang::DiagCode SpecifyParallelWidthMismatch;
+extern slang::DiagCode SpecifyRuleUnsupported;
+extern slang::DiagCode SpecifyRuleArgumentsUnsupported;
+extern slang::DiagCode SpecifyRuleMissingArgument;
+extern slang::DiagCode SpecifyRuleEdgeUnsupported;
 
 void setup_messages(slang::DiagnosticEngine &engine);
 }; // namespace diag
