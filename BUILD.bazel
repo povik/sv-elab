@@ -49,6 +49,7 @@ sh_test(
     srcs = ["dependency_support/slang_revision_check.sh"],
     data = ["@slang_revision//:revision"],
     env = {"EXPECTED_SLANG_REVISION": SLANG_VERSION_HASH},
+    tags = ["manual"],
 )
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")

@@ -18,6 +18,7 @@
 #include "slang/ast/statements/MiscStatements.h"
 #include "slang/ast/symbols/BlockSymbols.h"
 #include "slang/ast/types/Type.h"
+#include "slang/numeric/SVInt.h"
 #include <cstddef>
 #include <optional>
 

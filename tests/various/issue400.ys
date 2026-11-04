@@ -1,0 +1,34 @@
+read_verilog <<EOF
+(* blackbox *)
+module alu();
+	parameter FOO = 0;
+	localparam BAR = FOO;
+endmodule
+EOF
+
+read_slang <<EOF
+(* blackbox *)
+module alu();
+	parameter FOO = 0;
+	localparam BAR = FOO;
+endmodule
+module top();
+	alu inst();
+endmodule
+EOF
+
+hierarchy -check
+design -reset
+read_slang <<EOF
+(* blackbox *)
+module alu();
+	parameter FOO = 0;
+	localparam BAR = FOO;
+endmodule
+module top();
+	alu inst();
+endmodule
+EOF
+
+# TODO: missing check for alu not having been exported with parameter BAR
+dump =*
