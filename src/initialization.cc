@@ -18,9 +18,14 @@
 #include "slang_frontend.h"
 #include "variables.h"
 
+#ifndef SLANG_NO_YOSYS
+#include "backend_builder.h"
+#endif
+
 namespace slang_frontend {
 
-template <typename Func> void visit_netlist_variables(NetlistContext &netlist, Func &&visit_fn)
+template <typename Func>
+void visit_netlist_variables(NetlistContext &netlist, Func &&visit_fn, bool visit_nets = false)
 {
 	netlist.realm.visit(ast::makeVisitor(
 			[&](auto &, const ast::VariableSymbol &symbol) {
@@ -28,6 +33,10 @@ template <typename Func> void visit_netlist_variables(NetlistContext &netlist, F
 						symbol.lifetime == ast::VariableLifetime::Static) {
 					visit_fn(symbol);
 				}
+			},
+			[&](auto &, const ast::NetSymbol &symbol) {
+				if (visit_nets && symbol.getType().isFixedSize())
+					visit_fn(symbol);
 			},
 			[&](auto &visitor, const ast::InstanceSymbol &symbol) {
 				if (netlist.should_dissolve(symbol))
@@ -128,50 +137,96 @@ void evaluate_decl_initializers(NetlistContext &netlist)
 
 void finalize_variable_initialization(NetlistContext &netlist)
 {
-	visit_netlist_variables(netlist, [&](const ast::ValueSymbol &symbol) {
-		const ast::VariableSymbol *variable_symbol = nullptr;
-		if (ast::VariableSymbol::isKind(symbol.kind)) {
-			variable_symbol = &symbol.as<ast::VariableSymbol>();
-		} else if (ast::ModportPortSymbol::isKind(symbol.kind)) {
-			auto &port = symbol.as<ast::ModportPortSymbol>();
-			ast_invariant(port, port.internalSymbol != nullptr);
-			ast_invariant(port, ast::VariableSymbol::isKind(port.internalSymbol->kind));
-			variable_symbol = &port.internalSymbol->as<ast::VariableSymbol>();
-		} else {
-			ast_unreachable(symbol);
-		}
-
-		auto variable = Variable::from_symbol(&symbol);
 #ifndef SLANG_NO_YOSYS
-		if (netlist.is_inferred_memory(*variable_symbol)) {
-			// Nothing to do
-		} else
-#endif
-		{
-			auto signal = netlist.convert_static(variable);
-			ir::Value cl, cr; // lhs/rhs of a new connection
-			ir::Const attr_value(ir::Sx, signal.size());
-			for (uint64_t i = 0; i < signal.size(); i++) {
-				VariableBit vbit(variable, i);
-				bool register_driven = netlist.register_driven_variables.count(vbit);
-				bool driven = netlist.driven_variables.count(vbit);
-				// register_driven implies driven
-				assert_invariant(!register_driven || driven);
-				ir::Trit state = netlist.initial_state.at(vbit, ir::Sx);
-				if (register_driven) {
-					attr_value.set(i, state);
-				} else {
-					if (!driven) {
-						cl.append(signal[i]);
-						cr.append(state);
+	if (netlist.settings.undriven_as_anyseq.value_or(false)) {
+		// For undriven to anyseq conversion do a pre-pass
+		// which covers both nets and variables
+		visit_netlist_variables(
+				netlist,
+				[&](const ast::ValueSymbol &symbol) {
+					const ast::ValueSymbol *underlying_symbol;
+					if (ast::ModportPortSymbol::isKind(symbol.kind)) {
+						auto &port = symbol.as<ast::ModportPortSymbol>();
+						ast_invariant(port, port.internalSymbol != nullptr);
+						ast_invariant(port, ast::VariableSymbol::isKind(port.internalSymbol->kind));
+						underlying_symbol = &port.internalSymbol->as<ast::VariableSymbol>();
+					} else {
+						underlying_symbol = &symbol;
 					}
-				}
-			}
 
-			netlist.set_initialization(signal, attr_value);
-			netlist.connect(cl, cr);
-		}
-	});
+					if (netlist.is_inferred_memory(*underlying_symbol))
+						return;
+
+					auto variable = Variable::from_symbol(&symbol);
+					if (variable.is_special_net())
+						return;
+
+					VariableBits undriven;
+					auto signal = netlist.convert_static(variable);
+					for (uint64_t i = 0; i < signal.size(); i++) {
+						VariableBit vbit(variable, i);
+						ir::Trit state = netlist.initial_state.at(vbit, ir::Sx);
+						bool is_init = state == ir::S0 || state == ir::S1;
+						if (!netlist.driven_variables.count(vbit) && !is_init) {
+							undriven.append(vbit);
+						}
+					}
+
+					auto &backend = netlist.backend;
+					RTLIL::Module *canvas = backend.get()->canvas;
+					auto value = canvas->Anyseq(backend->new_id(), undriven.bitwidth());
+					// add_continuous_driver registers the target as driven internally
+					netlist.add_continuous_driver(undriven, value);
+				},
+				/* visit_nets= */ true);
+	}
+#endif
+
+	visit_netlist_variables(
+			netlist,
+			[&](const ast::ValueSymbol &symbol) {
+				const ast::VariableSymbol *variable_symbol = nullptr;
+				if (ast::VariableSymbol::isKind(symbol.kind)) {
+					variable_symbol = &symbol.as<ast::VariableSymbol>();
+				} else if (ast::ModportPortSymbol::isKind(symbol.kind)) {
+					auto &port = symbol.as<ast::ModportPortSymbol>();
+					ast_invariant(port, port.internalSymbol != nullptr);
+					ast_invariant(port, ast::VariableSymbol::isKind(port.internalSymbol->kind));
+					variable_symbol = &port.internalSymbol->as<ast::VariableSymbol>();
+				} else {
+					ast_unreachable(symbol);
+				}
+
+				auto variable = Variable::from_symbol(&symbol);
+
+				if (netlist.is_inferred_memory(*variable_symbol)) {
+					// Nothing to do
+				} else {
+					auto signal = netlist.convert_static(variable);
+					ir::Value cl, cr; // lhs/rhs of a new connection
+					ir::Const attr_value(ir::Sx, signal.size());
+					for (uint64_t i = 0; i < signal.size(); i++) {
+						VariableBit vbit(variable, i);
+						bool register_driven = netlist.register_driven_variables.count(vbit);
+						bool driven = netlist.driven_variables.count(vbit);
+						// register_driven implies driven
+						assert_invariant(!register_driven || driven);
+						ir::Trit state = netlist.initial_state.at(vbit, ir::Sx);
+						if (register_driven) {
+							attr_value.set(i, state);
+						} else {
+							if (!driven) {
+								cl.append(signal[i]);
+								cr.append(state);
+							}
+						}
+					}
+
+					netlist.set_initialization(signal, attr_value);
+					netlist.connect(cl, cr);
+				}
+			},
+			/* visit_nets= */ false);
 }
 
 }; // namespace slang_frontend
