@@ -671,17 +671,19 @@ struct SlangFrontend : Frontend
 			log_error("Exception: %s\n", e.what());
 		}
 
+		// Hack to get an empty selection in a way compatible with both pre and post Yosys v0.52
+		// Front of the selection stack should be a "full selection" at any time, and we can
+		// amend it.
+		RTLIL::Selection emitted_modules = design->selection_stack.front();
+		emitted_modules.full_selection = false;
+		for (auto name : emitted_module_names)
+			emitted_modules.selected_modules.insert(name);
+
+		design->selection_stack.push_back(emitted_modules);
+
+		call(design, "rewriter");
+
 		if (!settings.no_proc.value_or(false)) {
-			// Hack to get an empty selection in a way compatible with both pre and post Yosys v0.52
-			// Front of the selection stack should be a "full selection" at any time, and we can
-			// amend it.
-			RTLIL::Selection emitted_modules = design->selection_stack.front();
-			emitted_modules.full_selection = false;
-			for (auto name : emitted_module_names)
-				emitted_modules.selected_modules.insert(name);
-
-			design->selection_stack.push_back(emitted_modules);
-
 			log_push();
 			call(design, "proc_clean");
 			call(design, "proc_rmdead");
@@ -690,11 +692,14 @@ struct SlangFrontend : Frontend
 			call(design, "proc_rom");
 			call(design, "proc_mux");
 			call(design, "proc_clean");
+			call(design, "opt_clean");
 			call(design, "opt_expr -keepdc");
-			log_pop();
-
-			design->selection_stack.pop_back();
+			call(design, "opt_dff");
+			call(design, "wreduce");
 		}
+		log_pop();
+
+		design->selection_stack.pop_back();
 	}
 } SlangFrontend;
 
