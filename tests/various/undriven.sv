@@ -11,7 +11,7 @@ module undriven();
 	wire [1:0] bus_wire_partial;
 	assign bus_wire_partial[0] = 1'b0;
 
-	// is only initialized and is not driven so has 1 1-bit anyseq
+	// is initialized so has no anyseq
 	reg initialized_reg = 1'b1;
 
 	// is driven so has no anyseq
