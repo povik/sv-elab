@@ -132,6 +132,8 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 				"Keep hierarchy (experimental; may crash)");
 	cmdLine.add("--best-effort-hierarchy", best_effort_hierarchy,
 				"Keep hierarchy in a 'best effort' mode");
+	cmdLine.add("--formal", formal,
+				"Defines `FORMAL and undefines `SYNTHESIS");
 	cmdLine.add("--ignore-timing", ignore_timing,
 				"Ignore delays for synthesis");
 	cmdLine.add("--ignore-initial", ignore_initial,
@@ -3939,7 +3941,9 @@ void fixup_options(SynthesisSettings &settings, slang::driver::Driver &driver)
 		driver.diagEngine.issue(d);
 	}
 
-	if (!settings.no_synthesis_define.value_or(false)) {
+	if (settings.formal.value_or(false)) {
+		driver.options.defines.push_back("FORMAL=1");
+	} else if (!settings.no_synthesis_define.value_or(false)) {
 		driver.options.defines.push_back("SYNTHESIS=1");
 	}
 

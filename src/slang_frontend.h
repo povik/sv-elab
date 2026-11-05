@@ -617,6 +617,7 @@ struct SynthesisSettings {
 	std::optional<bool> compat_mode;
 	std::optional<bool> keep_hierarchy;
 	std::optional<bool> best_effort_hierarchy;
+	std::optional<bool> formal;
 	std::optional<bool> ignore_timing;
 	std::optional<bool> ignore_initial;
 	std::optional<bool> ignore_assertions;
