@@ -2,7 +2,6 @@ find_package(Yosys)
 include(GitRevision)
 
 git_rev_parse(YOSYS_SLANG_REVISION ${CMAKE_SOURCE_DIR})
-git_rev_parse(SLANG_REVISION ${CMAKE_SOURCE_DIR}/third_party/slang)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/version.h)
 
 if (BUILD_AS_PLUGIN)

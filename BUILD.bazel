@@ -26,7 +26,6 @@ expand_template(
     name = "version_h",
     out = "version.h",
     substitutions = {
-        "@SLANG_REVISION@": "12.0.0",
         "@SV_ELAB_REVISION@": SV_ELAB_REVISION,
     },
     template = "src/version.h.in",

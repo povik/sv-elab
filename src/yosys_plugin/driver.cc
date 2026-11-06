@@ -33,6 +33,7 @@
 #include "slang/text/Json.h"
 #include "slang/text/SourceLocation.h"
 #include "slang/text/SourceSnippet.h"
+#include "slang/util/VersionInfo.h"
 
 #include "driver.h"
 #include "backend_builder.h"
@@ -261,7 +262,7 @@ struct SlangVersionPass : Pass
 			cmd_error(args, 1, "Extra argument");
 
 		log("sv-elab revision %s\n", YOSYS_SLANG_REVISION);
-		log("slang revision %s\n", SLANG_REVISION);
+		log("slang revision %s\n", slang::VersionInfo::getVersionString().c_str());
 	}
 } SlangVersionPass;
 
