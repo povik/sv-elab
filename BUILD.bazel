@@ -2,14 +2,9 @@
 """
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_license//rules:license.bzl", "license")
-load(
-    "//:dependency_support/slang_ext.bzl",
-    "SLANG_VERSION_HASH",
-    "SLANG_VERSION_MAJOR",
-    "SLANG_VERSION_MINOR",
-    "SLANG_VERSION_PATCH",
-)
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 package(
     default_applicable_licenses = [":license"],
@@ -33,26 +28,9 @@ expand_template(
     out = "version.h",
     substitutions = {
         "@SV_ELAB_REVISION@": SV_ELAB_REVISION,
-        "@SLANG_REVISION@": "{}.{}.{}".format(
-            SLANG_VERSION_MAJOR,
-            SLANG_VERSION_MINOR,
-            SLANG_VERSION_PATCH,
-        ),
     },
     template = "src/version.h.in",
 )
-
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-sh_test(
-    name = "slang_revision_check",
-    srcs = ["dependency_support/slang_revision_check.sh"],
-    data = ["@slang_revision//:revision"],
-    env = {"EXPECTED_SLANG_REVISION": SLANG_VERSION_HASH},
-    tags = ["manual"],
-)
-
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 # Frontend headers and sources are consumed as file lists by a downstream
 # backend that compiles both sides together (the frontend's own sources
@@ -65,11 +43,24 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+# Guard against bumping the pinned sv-lang version without updating the
+# third_party/slang submodule (or vice versa). Manual because it inspects the
+# local git checkout and requires submodules to be initialized.
+sh_test(
+    name = "slang_version_check",
+    srcs = ["dependency_support/slang_version_check.sh"],
+    data = [
+        "@slang_version//:actual",
+        "@slang_version//:expected",
+    ],
+    tags = ["manual"],
+)
+
 # Expose the pinned slang build so consumers pull exactly the version sv-elab
 # tracks, instead of maintaining a parallel slang dependency of their own.
 alias(
     name = "slang",
-    actual = "@vendored-slang//:slang",
+    actual = "@sv-lang//:libsvlang",
     visibility = ["//visibility:public"],
 )
 
