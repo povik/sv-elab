@@ -75,14 +75,14 @@ alias(
 
 filegroup(
     name = "common_srcs",
-    srcs = glob(["src/*.cc", "src/*.h"]),
+    srcs = glob(["src/*.cc"]),
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "frontend_hdrs",
     hdrs = glob(["src/*.h"]),
-    strip_include_prefix = "src",
+    includes = ["src"],
     visibility = ["//visibility:public"],
 )
 
