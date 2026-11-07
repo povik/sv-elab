@@ -17,3 +17,9 @@ bazel_dep(name = "sv-lang", version = "12.0.0")
 
 vendored_hashlib_ext = use_extension("//:dependency_support/hashlib_ext.bzl", "vendored_hashlib")
 use_repo(vendored_hashlib_ext, "vendored-hashlib")
+
+slang_version = use_repo_rule("//:dependency_support/slang_version.bzl", "slang_version")
+slang_version(
+    name = "slang_version",
+    path = "third_party/slang",
+)

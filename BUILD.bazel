@@ -4,6 +4,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_license//rules:license.bzl", "license")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 package(
     default_applicable_licenses = [":license"],
@@ -40,6 +41,19 @@ cc_library(
     hdrs = [":version.h"],
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
+)
+
+# Guard against bumping the pinned sv-lang version without updating the
+# third_party/slang submodule (or vice versa). Manual because it inspects the
+# local git checkout and requires submodules to be initialized.
+sh_test(
+    name = "slang_version_check",
+    srcs = ["dependency_support/slang_version_check.sh"],
+    data = [
+        "@slang_version//:actual",
+        "@slang_version//:expected",
+    ],
+    tags = ["manual"],
 )
 
 # Expose the pinned slang build so consumers pull exactly the version sv-elab
