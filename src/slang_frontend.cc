@@ -86,7 +86,6 @@
 #include "cases.h"
 #endif
 
-#include "version.h"
 #include "statements.h"
 #include "slang_frontend.h"
 #include "diag.h"
