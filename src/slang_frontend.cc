@@ -1274,6 +1274,12 @@ ir::Value EvalContext::sva(ast::Expression const &expr)
 
 ir::Value EvalContext::operator()(ast::Expression const &expr)
 {
+	if (expr.bad()) {
+		// We are expecting a well-formed AST with no bad nodes if slang's elaboration
+		// went through not having raised any errors. If this assumption is broken, abort.
+		ast_unreachable(expr);
+	}
+
 	ir::Value ret;
 	size_t repl_count;
 
