@@ -1,0 +1,38 @@
+log -header "Interface Output Ports should be multiply driven"
+read_slang --keep-hierarchy --top top <<EOT
+interface ifc;
+  logic [1:0] x, y;
+  modport mp (output x, output y);
+endinterface
+
+module user(ifc.mp p);
+  assign p.x[0] = 1'b0;
+  assign p.y = 2'b0;
+
+endmodule
+
+module top(output logic [1:0] x, output logic [1:0] y);
+  ifc p();
+  user u(p);
+  assign p.x[1] = 1'b1;
+  assign x = p.x;
+  assign y = p.y;
+endmodule
+EOT
+proc
+opt_clean
+hierarchy -top top
+
+log -header "Blackbox Output Ports should still be connected"
+read_slang --keep-hierarchy <<EOF
+(* blackbox *)
+module bbox(input a, output y);
+endmodule
+
+module top(input a, output y);
+  bbox u_bbox(.a(a), .y(y));
+endmodule
+EOF
+write_verilog -noattr /dev/stdout
+select -assert-count 1 top/u_bbox %co:+[y] top/w:y %i
+check -assert
