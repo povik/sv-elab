@@ -6,7 +6,6 @@ endinterface
 module user(ifc.mp p);
   assign p.x[0] = 1'b0;
   assign p.y = 2'b0;
-
 endmodule
 
 module top(output logic [1:0] x, output logic [1:0] y);
@@ -19,7 +18,6 @@ endmodule
 
 module user2(ifc.mp p);
   assign p.y = 2'b0;
-
 endmodule
 
 module top2(output logic [1:0] x, output logic [1:0] y);
