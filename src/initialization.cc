@@ -16,7 +16,6 @@
 #include "slang_frontend.h"
 #include "variables.h"
 #include "diag.h"
-
 namespace slang_frontend {
 
 template <typename Func> void visit_netlist_variables(NetlistContext &netlist, Func &&visit_fn)
@@ -151,11 +150,31 @@ void finalize_variable_initialization(NetlistContext &netlist)
 #endif
 		{
 			auto signal = netlist.convert_static(variable);
+			if (modport_output) {
+				uint64_t driven_bits = 0;
+				for (uint64_t i = 0; i < signal.size(); i++)
+					driven_bits += netlist.driven_variables.count(VariableBit(variable, i));
+				if (driven_bits != signal.size()) {
+					if (driven_bits != 0) {
+						// modport only partially driven, this is an error and can't be handled
+						netlist.add_diag(diag::PartiallyDrivenModportOutput, symbol.location)
+							<< symbol.name << netlist.realm_instance.getHierarchicalPath();
+					} else {
+#ifndef SLANG_NO_YOSYS
+						// modport is completly undriven, flip the direction & drive with an empty wire,
+						// this should get removed in opt_clean
+						auto *wire = signal.raw_.as_wire();
+						assert_invariant(wire);
+						wire->port_output = false;
+						wire->port_input = true;
+						netlist.register_driven(variable);
+#endif
+					}
+				}
+			}
 			ir::Value cl, cr; // lhs/rhs of a new connection
 			ir::Const attr_value(ir::Sx, signal.size());
 
-			//
-			
 			for (uint64_t i = 0; i < signal.size(); i++) {
 				VariableBit vbit(variable, i);
 				bool register_driven = netlist.register_driven_variables.count(vbit);
@@ -167,9 +186,6 @@ void finalize_variable_initialization(NetlistContext &netlist)
 					attr_value.set(i, state);
 				} else {
 					if (!driven) {
-						if (modport_output) {
-							netlist.add_diag(diag::UndrivenModportOutput, symbol.location) << variable_symbol->name << netlist.realm_instance.getHierarchicalPath();
-						}
 						cl.append(signal[i]);
 						cr.append(state);
 					}

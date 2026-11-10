@@ -16,3 +16,16 @@ module top(output logic [1:0] x, output logic [1:0] y);
   assign x = p.x;
   assign y = p.y;
 endmodule
+
+module user2(ifc.mp p);
+  assign p.y = 2'b0;
+
+endmodule
+
+module top2(output logic [1:0] x, output logic [1:0] y);
+  ifc p();
+  user2 u(p);
+  assign p.x = 2'b10;
+  assign x = p.x;
+  assign y = p.y;
+endmodule

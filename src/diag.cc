@@ -139,7 +139,7 @@ DiagCode HighImpedanceUnsupported(DiagSubsystem::Netlist, 1086);
 DiagCode IfacePortUnsupported(DiagSubsystem::Netlist, 1087);
 DiagCode OptionRequiresStandaloneSlang(DiagSubsystem::Netlist, 1088);
 DiagCode NoteModuleNotDissolvedBecauseInOut(DiagSubsystem::Netlist, 1089);
-DiagCode UndrivenModportOutput(DiagSubsystem::Netlist, 1090);
+DiagCode PartiallyDrivenModportOutput(DiagSubsystem::Netlist, 1091);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -375,8 +375,8 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setMessage(OptionRequiresStandaloneSlang, "option '{}' unsupported; please use standalone slang instead");
 	engine.setSeverity(OptionRequiresStandaloneSlang, DiagnosticSeverity::Error);
 
-	engine.setMessage(UndrivenModportOutput, "modport output port '{}' on module '{}' is not driven. sv-elab cannot handle this case while preserving hierarchy, rerun without either --keep-hierarchy or --best-effort-hierarchy");
-	engine.setSeverity(UndrivenModportOutput, DiagnosticSeverity::Error);
+	engine.setMessage(PartiallyDrivenModportOutput, "modport output port '{}' on module '{}' is only partially driven. sv-elab cannot handle this case while preserving hierarchy, rerun without either --keep-hierarchy or --best-effort-hierarchy");
+	engine.setSeverity(PartiallyDrivenModportOutput, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag
