@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "backend_builder.h"
+#include "slang/ast/expressions/Operator.h"
 #include "slang_frontend.h"
 #include "variables.h"
 

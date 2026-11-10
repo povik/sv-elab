@@ -23,9 +23,11 @@
 #include "slang/ast/symbols/CompilationUnitSymbols.h"
 #include "slang/diagnostics/Diagnostics.h"
 #include "slang/numeric/ConstantValue.h"
+#include "slang/numeric/SVInt.h"
 #include "slang/text/SourceLocation.h"
 #include "slang/util/Enum.h"
 #ifndef SLANG_NO_YOSYS
+#include "kernel/yosys_common.h"
 #include "kernel/rtlil.h"
 #include "kernel/log.h"
 #endif
@@ -626,6 +628,7 @@ struct SynthesisSettings {
 	std::optional<bool> no_default_translate_off;
 	std::optional<bool> allow_dual_edge_ff;
 	std::optional<bool> no_synthesis_define;
+	std::optional<bool> formal;
 	std::optional<UdpHandleMode> udp_handling;
 	// pass std::less<> to enable transparent lookup
 	std::set<std::string, std::less<>> blackboxed_modules;

@@ -9,6 +9,14 @@
 // IR can swap out the implementation while keeping the same surface.
 //
 #pragma once
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <iterator>
+#include <utility>
+#include <vector>
+
+#include "kernel/log.h"
 #include "kernel/rtlil.h"
 
 namespace ir {

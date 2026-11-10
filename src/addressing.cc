@@ -7,6 +7,7 @@
 #include "slang/ast/Expression.h"
 #include "slang/ast/expressions/SelectExpressions.h"
 #include "slang/ast/types/Type.h"
+#include <cstddef>
 #include <cstdint>
 
 #include "slang_frontend.h"

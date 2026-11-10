@@ -42,6 +42,7 @@ set(ALL_TESTS
     various/dualedge.ys
     various/expr.ys
     various/flop_naming.ys
+    various/formal_define.ys
     various/formal_stmts.ys
     various/hierref_error.ys
     various/huge_reg.ys
@@ -66,6 +67,7 @@ set(ALL_TESTS
     various/readmem.ys
     various/readmem_diag.ys
     various/regress.ys
+    various/specify.ys
     various/stringattrs.ys
     various/stringparams.ys
     various/timescale.ys

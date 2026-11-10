@@ -140,6 +140,14 @@ DiagCode IfacePortUnsupported(DiagSubsystem::Netlist, 1087);
 DiagCode OptionRequiresStandaloneSlang(DiagSubsystem::Netlist, 1088);
 DiagCode NoteModuleNotDissolvedBecauseInOut(DiagSubsystem::Netlist, 1089);
 DiagCode PartiallyDrivenModportOutput(DiagSubsystem::Netlist, 1091);
+DiagCode InvalidSpecifyTimingLimit(DiagSubsystem::Netlist, 1090);
+DiagCode InvalidSpecifyDelayCount(DiagSubsystem::Netlist, 1091);
+DiagCode SpecifyExtraDelaysIgnored(DiagSubsystem::Netlist, 1092);
+DiagCode SpecifyParallelWidthMismatch(DiagSubsystem::Netlist, 1093);
+DiagCode SpecifyRuleUnsupported(DiagSubsystem::Netlist, 1094);
+DiagCode SpecifyRuleArgumentsUnsupported(DiagSubsystem::Netlist, 1095);
+DiagCode SpecifyRuleMissingArgument(DiagSubsystem::Netlist, 1096);
+DiagCode SpecifyRuleEdgeUnsupported(DiagSubsystem::Netlist, 1097);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -377,6 +385,30 @@ void setup_messages(slang::DiagnosticEngine &engine)
 
 	engine.setMessage(PartiallyDrivenModportOutput, "modport output port '{}' on module '{}' is only partially driven. sv-elab cannot handle this case while preserving hierarchy, rerun without either --keep-hierarchy or --best-effort-hierarchy");
 	engine.setSeverity(PartiallyDrivenModportOutput, DiagnosticSeverity::Error);
+  
+	engine.setMessage(InvalidSpecifyTimingLimit, "invalid specify timing limit");
+	engine.setSeverity(InvalidSpecifyTimingLimit, DiagnosticSeverity::Error);
+	
+	engine.setMessage(InvalidSpecifyDelayCount, "specify delays require 1, 2, 3, 6, or 12 elements; got {}");
+	engine.setSeverity(InvalidSpecifyDelayCount, DiagnosticSeverity::Error);
+	
+	engine.setMessage(SpecifyExtraDelaysIgnored, "path delay expressions beyond rise/fall are not supported and will be ignored");
+	engine.setSeverity(SpecifyExtraDelaysIgnored, DiagnosticSeverity::Warning);
+	
+	engine.setMessage(SpecifyParallelWidthMismatch, "parallel specify source width ({}) does not match destination width ({})");
+	engine.setSeverity(SpecifyParallelWidthMismatch, DiagnosticSeverity::Error);
+	
+	engine.setMessage(SpecifyRuleUnsupported, "unsupported specify rule type '{}'");
+	engine.setSeverity(SpecifyRuleUnsupported, DiagnosticSeverity::Error);
+	
+	engine.setMessage(SpecifyRuleArgumentsUnsupported, "unsupported arguments for specify rule '{}'");
+	engine.setSeverity(SpecifyRuleArgumentsUnsupported, DiagnosticSeverity::Error);
+	
+	engine.setMessage(SpecifyRuleMissingArgument, "missing argument for specify rule '{}'");
+	engine.setSeverity(SpecifyRuleMissingArgument, DiagnosticSeverity::Error);
+	
+	engine.setMessage(SpecifyRuleEdgeUnsupported, "unsupported edge for specify rule '{}'");
+	engine.setSeverity(SpecifyRuleEdgeUnsupported, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag

@@ -7,6 +7,7 @@
 #pragma once
 
 #include "diag.h"
+#include "slang/numeric/SVInt.h"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -560,7 +561,8 @@ static const ast::Statement *unwrap_statement(const ast::Statement *statement)
 	return statement;
 }
 
-struct StatementExecutor : public ast::ASTVisitor<StatementExecutor, ast::VisitFlags::Statements>
+struct StatementExecutor : public ast::ASTVisitor<StatementExecutor,
+		ast::VisitFlags::Statements | ast::VisitFlags::Bad>
 {
 public:
 	NetlistContext &netlist;
@@ -1050,6 +1052,13 @@ public:
 	}
 
 	void handle(const ast::EmptyStatement &) {}
+
+	void handle(const ast::InvalidStatement &stmt)
+	{
+		// We are expecting a well-formed AST with no bad nodes if slang's elaboration
+		// went through not having raised any errors. If this assumption is broken, abort.
+		ast_unreachable(stmt);
+	}
 
 	void init_nonstatic_variable(const ast::ValueSymbol &symbol)
 	{
