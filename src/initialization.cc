@@ -17,7 +17,7 @@
 
 #include "slang_frontend.h"
 #include "variables.h"
-
+#include "diag.h"
 namespace slang_frontend {
 
 template <typename Func> void visit_netlist_variables(NetlistContext &netlist, Func &&visit_fn)
@@ -130,6 +130,7 @@ void finalize_variable_initialization(NetlistContext &netlist)
 {
 	visit_netlist_variables(netlist, [&](const ast::ValueSymbol &symbol) {
 		const ast::VariableSymbol *variable_symbol = nullptr;
+		bool modport_output = false;
 		if (ast::VariableSymbol::isKind(symbol.kind)) {
 			variable_symbol = &symbol.as<ast::VariableSymbol>();
 		} else if (ast::ModportPortSymbol::isKind(symbol.kind)) {
@@ -137,11 +138,13 @@ void finalize_variable_initialization(NetlistContext &netlist)
 			ast_invariant(port, port.internalSymbol != nullptr);
 			ast_invariant(port, ast::VariableSymbol::isKind(port.internalSymbol->kind));
 			variable_symbol = &port.internalSymbol->as<ast::VariableSymbol>();
+			modport_output = port.direction == slang::ast::ArgumentDirection::Out;
 		} else {
 			ast_unreachable(symbol);
 		}
 
 		auto variable = Variable::from_symbol(&symbol);
+
 #ifndef SLANG_NO_YOSYS
 		if (netlist.is_inferred_memory(*variable_symbol)) {
 			// Nothing to do
@@ -149,8 +152,31 @@ void finalize_variable_initialization(NetlistContext &netlist)
 #endif
 		{
 			auto signal = netlist.convert_static(variable);
+			if (modport_output) {
+				uint64_t driven_bits = 0;
+				for (uint64_t i = 0; i < signal.size(); i++)
+					driven_bits += netlist.driven_variables.count(VariableBit(variable, i));
+				if (driven_bits != signal.size()) {
+					if (driven_bits != 0) {
+						// modport only partially driven, this is an error and can't be handled
+						netlist.add_diag(diag::PartiallyDrivenModportOutput, symbol.location)
+							<< symbol.name << netlist.realm_instance.getHierarchicalPath();
+					} else {
+#ifndef SLANG_NO_YOSYS
+						// modport is completly undriven, flip the direction & drive with an empty wire,
+						// this should get removed in opt_clean
+						auto *wire = signal.raw_.as_wire();
+						assert_invariant(wire);
+						wire->port_output = false;
+						wire->port_input = true;
+						netlist.register_driven(variable);
+#endif
+					}
+				}
+			}
 			ir::Value cl, cr; // lhs/rhs of a new connection
 			ir::Const attr_value(ir::Sx, signal.size());
+
 			for (uint64_t i = 0; i < signal.size(); i++) {
 				VariableBit vbit(variable, i);
 				bool register_driven = netlist.register_driven_variables.count(vbit);

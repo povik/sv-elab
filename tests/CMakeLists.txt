@@ -73,6 +73,7 @@ set(ALL_TESTS
     various/timescale.ys
     various/tranif.ys
     various/top_attr.ys
+    various/undriven_modport_output.ys
     various/unimplemented.ys
     various/unknown_cells.ys
     various/toplevel_intf.ys

@@ -1,0 +1,29 @@
+log -header "Flattened and completely undriven modport port"
+log -push
+read_slang --top top2 undriven_modport_output.sv
+prep -top top2
+sat -verify -prove x 2 -prove y 0
+log -pop
+
+log -header "Hierarchy and completely undriven modport port"
+log -push
+design -reset
+read_slang --keep-hierarchy --top top2 undriven_modport_output.sv
+prep -top top2
+sat -verify -prove x 2 -prove y 0
+log -pop
+
+log -header "Flattened and partially undriven modport port"
+log -push
+design -reset
+read_slang --top top undriven_modport_output.sv
+prep -top top
+sat -verify -prove x 2 -prove y 0
+log -pop
+
+log -header "Hierarchy and partially undriven modport port"
+log -push
+design -reset
+logger -expect error "modport output port 'x' on module 'top.u' is only partially driven.*" 1
+read_slang --keep-hierarchy --top top undriven_modport_output.sv
+log -pop

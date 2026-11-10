@@ -92,6 +92,7 @@ extern slang::DiagCode HierarchicalRefOutsideModulesUnsupported;
 extern slang::DiagCode HighImpedanceUnsupported;
 extern slang::DiagCode IfacePortUnsupported;
 extern slang::DiagCode OptionRequiresStandaloneSlang;
+extern slang::DiagCode PartiallyDrivenModportOutput;
 extern slang::DiagCode InvalidSpecifyDelayCount;
 extern slang::DiagCode SpecifyExtraDelaysIgnored;
 extern slang::DiagCode SpecifyParallelWidthMismatch;
