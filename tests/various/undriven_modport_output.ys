@@ -1,0 +1,8 @@
+# Flattening preserves the bit driven by the parent module.
+read_slang --top top undriven_modport_output.sv
+prep -top top
+sat -verify -prove x 2 -prove y 0
+
+design -reset
+logger -expect error "modport output port 'x' on module 'top.u' is not driven.*" 1
+read_slang --keep-hierarchy --top top undriven_modport_output.sv
