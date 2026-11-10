@@ -154,6 +154,8 @@ void SynthesisSettings::addOptions(slang::CommandLine &cmdLine) {
 				"Allow synthesis of dual-edge flip-flops (@(edge))");
 	cmdLine.add("--no-synthesis-define", no_synthesis_define,
 				"Don't add implicit -D SYNTHESIS");
+	cmdLine.add("--formal", formal,
+				"Replace the implicit -D SYNTHESIS with -D FORMAL");
 	cmdLine.add("--blackboxed-module",
 				[this](std::string_view value) {
 					blackboxed_modules.insert(std::string(value));
@@ -3944,7 +3946,10 @@ void fixup_options(SynthesisSettings &settings, slang::driver::Driver &driver)
 		driver.diagEngine.issue(d);
 	}
 
-	if (!settings.no_synthesis_define.value_or(false)) {
+	if (settings.formal.value_or(false)) {
+		driver.options.defines.push_back("FORMAL=1");
+	}
+	if (!settings.formal.value_or(false) && !settings.no_synthesis_define.value_or(false)) {
 		driver.options.defines.push_back("SYNTHESIS=1");
 	}
 
