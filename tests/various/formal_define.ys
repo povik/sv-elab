@@ -1,0 +1,36 @@
+# By default, FORMAL should not be defined
+read_slang <<EOF
+module top();
+`ifdef FORMAL
+	initial $error("FORMAL should not be defined by default!");
+`endif
+endmodule
+EOF
+
+design -reset
+
+# With --formal, FORMAL should be defined and SYNTHESIS should not be
+read_slang --formal <<EOF
+module top();
+`ifndef FORMAL
+	initial $error("FORMAL should be defined with --formal!");
+`endif
+`ifdef SYNTHESIS
+	initial $error("SYNTHESIS should NOT be defined with --formal!");
+`endif
+endmodule
+EOF
+
+design -reset
+
+# --no-synthesis-define does not suppress FORMAL
+read_slang --formal --no-synthesis-define <<EOF
+module top();
+`ifndef FORMAL
+	initial $error("FORMAL should be defined with --formal --no-synthesis-define!");
+`endif
+`ifdef SYNTHESIS
+	initial $error("SYNTHESIS should NOT be defined with --formal --no-synthesis-define!");
+`endif
+endmodule
+EOF
