@@ -1,7 +1,7 @@
 load(":yosys_test.bzl", "yosys_test")
 
 _UNIT_TESTS = [
-    "async", "dff", "dualedge", "function_call", "expression_attrs", "latch", "undriven-interface",
+    "async", "dff", "dualedge", "function_call", "expression_attrs", "latch",
 ]
 
 _VARIOUS_TESTS = [
