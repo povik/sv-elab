@@ -115,6 +115,9 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 }
 #endif
 
+// only used for Yosys lowering
+struct Case;
+
 #else // SLANG_NO_YOSYS
 
 // Used for failed internal invariants
@@ -142,7 +145,6 @@ class VariableBits;
 struct VariableBit;
 struct VariableChunk;
 struct ProcessTiming;
-struct Case;
 class LValue;
 struct HierarchyQueue;
 class AttributeGuard;
