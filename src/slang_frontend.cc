@@ -288,11 +288,7 @@ const std::optional<ir::Const> NetlistContext::convert_const(const slang::Consta
 		assert_invariant(bits.size() == constval.getBitstreamWidth());
 		return bits;
 	} else if (constval.isString()) {
-		ir::Const ret = convert_svint(constval.convertToInt().integer(), loc);
-#ifndef SLANG_NO_YOSYS
-		ret.raw_rtlil().flags |= RTLIL::CONST_FLAG_STRING;
-#endif
-		return ret;
+		return convert_svint(constval.convertToInt().integer(), loc);
 	} else if (constval.isNullHandle()) {
 		return {};
 	}
@@ -2515,8 +2511,9 @@ public:
 						auto converted = netlist.convert_const(symbol.getValue(), symbol.location);
 						if (converted) {
 							params.push_back({std::string(symbol.name), *converted,
-									symbol.isImplicitString(
-											slang::SourceRange(sym.location, sym.location)) &&
+									(symbol.isImplicitString(
+											 slang::SourceRange(sym.location, sym.location)) ||
+											symbol.getValue().isString()) &&
 											converted->size() % 8 == 0});
 						}
 					},

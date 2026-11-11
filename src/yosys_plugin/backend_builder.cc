@@ -402,7 +402,7 @@ void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::
 
 	for (auto &param : param_values) {
 		auto const_rtlil = param.value.to_rtlil();
-		if (param.implicit_string) {
+		if (param.is_string) {
 			const_rtlil.flags |= RTLIL::CONST_FLAG_STRING;
 		}
 		cell->setParam(RTLIL::escape_id(param.name), const_rtlil);
