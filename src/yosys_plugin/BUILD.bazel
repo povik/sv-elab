@@ -25,8 +25,6 @@ cc_library(
         "-std=c++20",
         "-Wno-unused-parameter",
     ],
-    # sv-lang's BCR overlay lists its generated headers in srcs rather than hdrs.
-    features = ["-layering_check"],
     visibility = ["//visibility:private"],
     deps = [
         ":plugin_internal_hdrs",
