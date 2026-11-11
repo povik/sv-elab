@@ -47,7 +47,7 @@ void process_sva_property(const ast::ConcurrentAssertionStatement &statement,
 	if (ast::DisableIffAssertionExpr::isKind(expr->kind)) {
 		auto &disable = expr->as<ast::DisableIffAssertionExpr>();
 		switch_.emplace(procedural, netlist.ReduceBool(procedural.eval.sva(disable.condition)));
-		switch_->enter_branch({ir::S0});
+		switch_->enter_branch({Trit::S0});
 		expr = &disable.expr;
 		source_range = expr->syntax ? expr->syntax->sourceRange() : statement.sourceRange;
 	}

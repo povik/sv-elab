@@ -150,7 +150,7 @@ ir::Value BackendGraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Val
 #define OP(type)                                                                                   \
 	if (rtlil_op == ID($##type))                                                                   \
 		return RTLIL::const_##type(                                                                \
-				a.as_const().to_rtlil(), b.as_const().to_rtlil(), a_signed, b_signed, y_width);
+				ir::to_rtlil(a.as_const()), ir::to_rtlil(b.as_const()), a_signed, b_signed, y_width);
 		OP(add)
 		OP(sub)
 		OP(mul)
@@ -224,7 +224,7 @@ ir::Value BackendGraphBuilder::Unop(
 		bool have_const = false;
 #define OP(type)                                                                                   \
 	if (rtlil_op == ID($##type)) {                                                                 \
-		const_result = RTLIL::const_##type(a.as_const().to_rtlil(), {}, a_signed, false, y_width); \
+		const_result = RTLIL::const_##type(ir::to_rtlil(a.as_const()), {}, a_signed, false, y_width); \
 		have_const = true;                                                                         \
 	}
 		OP(pos)
@@ -240,7 +240,7 @@ ir::Value BackendGraphBuilder::Unop(
 		if (have_const) {
 			if (invert) {
 				const_result = RTLIL::const_logic_not(
-						const_result.as_const().to_rtlil(), {}, false, false, y_width);
+						ir::to_rtlil(const_result.as_const()), {}, false, false, y_width);
 			}
 			return const_result;
 		}
@@ -270,13 +270,13 @@ void BackendGraphBuilder::connect(ir::Value lhs, ir::Value rhs)
 	}
 }
 
-void BackendGraphBuilder::set_initialization(ir::Value signal, ir::Const init_value)
+void BackendGraphBuilder::set_initialization(ir::Value signal, TritVector init_value)
 {
 	if (init_value.is_fully_undef())
 		return;
 	log_assert(signal.is_wire());
 	RTLIL::Wire *wire = signal.chunks().begin()->wire;
-	wire->attributes[ID::init] = init_value.to_rtlil();
+	wire->attributes[ID::init] = ir::to_rtlil(init_value);
 }
 
 // Synthesizes two single-edge FFs (one posedge, one negedge) with the same D input,
@@ -291,7 +291,7 @@ void BackendGraphBuilder::add_dual_edge_aldff(const std::string &base_name, ir::
 	RTLIL::Wire *neg_q = canvas->addWire(
 			canvas->uniquify(Yosys::stringf("%s$neg$q", base_name.c_str())), d.size());
 
-	if (aload == (aload_polarity ? ir::S0 : ir::S1)) {
+	if (aload == (aload_polarity ? Trit::S0 : Trit::S1)) {
 		RTLIL::Cell *pos_ff =
 				canvas->addDff(canvas->uniquify(Yosys::stringf("%s$pos", base_name.c_str())),
 						RTLIL::SigBit(clk), d, pos_q, /*edge_polarity=*/true);
@@ -368,7 +368,7 @@ void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::
 	}
 
 	for (auto &param : param_values) {
-		auto const_rtlil = param.value.to_rtlil();
+		auto const_rtlil = ir::to_rtlil(param.value);
 		if (param.is_string) {
 			const_rtlil.flags |= RTLIL::CONST_FLAG_STRING;
 		}
@@ -470,7 +470,7 @@ ir::WritePort *BackendGraphBuilder::add_write_port(ir::Memory *memory,
 	return reinterpret_cast<ir::WritePort *>(port);
 }
 
-static const RTLIL::Const reverse_data(RTLIL::Const &orig, int width)
+static const RTLIL::Const reverse_data(const RTLIL::Const &orig, int width)
 {
 	std::vector<RTLIL::State> bits;
 	log_assert(orig.size() % width == 0);
@@ -482,7 +482,7 @@ static const RTLIL::Const reverse_data(RTLIL::Const &orig, int width)
 
 // Private helper
 void BackendGraphBuilder::emit_meminit_cell(
-		RTLIL::Memory *mem, uint64_t word_offset, bool big_endian, ir::Const data, ir::Const mask)
+		RTLIL::Memory *mem, uint64_t word_offset, bool big_endian, TritVector data, TritVector mask)
 {
 	if (data.empty())
 		return;
@@ -500,13 +500,13 @@ void BackendGraphBuilder::emit_meminit_cell(
 	cell->setPort(ID::ADDR,
 			mem->start_offset + (big_endian ? (mem->size - word_offset - nwords) : word_offset));
 	cell->setPort(
-			ID::DATA, big_endian ? reverse_data(data.raw_rtlil(), mem->width) : data.to_rtlil());
-	cell->setPort(ID::EN, mask.to_rtlil());
+			ID::DATA, big_endian ? reverse_data(ir::to_rtlil(data), mem->width) : ir::to_rtlil(data));
+	cell->setPort(ID::EN, ir::to_rtlil(mask));
 	bless_object(cell);
 }
 
 void BackendGraphBuilder::add_memory_init(
-		ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data)
+		ir::Memory *memory, uint64_t bit_offset, bool big_endian, TritVector data)
 {
 	if (data.empty())
 		return;
@@ -515,24 +515,19 @@ void BackendGraphBuilder::add_memory_init(
 
 	uint64_t processed = 0;
 
-	using ir::Const;
-	using ir::S0;
-	using ir::S1;
-	using ir::Sx;
-
 	// Depending on the offset alignment with respect to word boundaries
 	// we might need to emit up to 3 instances of the `$meminit_v2` cell.
 	auto width = rtlil_memory->width;
 	if (bit_offset % width != 0) {
 		uint64_t offset_in_cell = bit_offset % width;
-		uint64_t length = std::min(width - offset_in_cell, data.size());
-		Const data1, mask1;
-		data1.append(Const(Sx, offset_in_cell));
+		uint64_t length = std::min<uint64_t>(width - offset_in_cell, (uint64_t) data.size());
+		TritVector data1, mask1;
+		data1.append(TritVector(Trit::Sx, offset_in_cell));
 		data1.append(data.extract(0, length));
-		data1.append(Const(Sx, width - offset_in_cell - length));
-		mask1.append(Const(S0, offset_in_cell));
-		mask1.append(Const(S1, length));
-		mask1.append(Const(S0, width - offset_in_cell - length));
+		data1.append(TritVector(Trit::Sx, width - offset_in_cell - length));
+		mask1.append(TritVector(Trit::S0, offset_in_cell));
+		mask1.append(TritVector(Trit::S1, length));
+		mask1.append(TritVector(Trit::S0, width - offset_in_cell - length));
 		emit_meminit_cell(rtlil_memory, bit_offset / width, big_endian, data1, mask1);
 		processed += length;
 	}
@@ -541,18 +536,18 @@ void BackendGraphBuilder::add_memory_init(
 		log_assert((bit_offset + processed) % width == 0);
 		uint64_t length = ((((uint64_t)data.size()) - processed) / width) * width;
 		emit_meminit_cell(rtlil_memory, (bit_offset + processed) / width, big_endian,
-				data.extract(processed, length), Const(S1, width));
+				data.extract(processed, length), TritVector(Trit::S1, width));
 		processed += length;
 	}
 
 	if (processed < data.size()) {
 		uint64_t length = data.size() - processed;
 		log_assert(length < uint64_t(width));
-		Const data1, mask1;
+		TritVector data1, mask1;
 		data1.append(data.extract(0, length));
-		data1.append(Const(Sx, width - length));
-		mask1.append(Const(S1, length));
-		mask1.append(Const(S0, width - length));
+		data1.append(TritVector(Trit::Sx, width - length));
+		mask1.append(TritVector(Trit::S1, length));
+		mask1.append(TritVector(Trit::S0, width - length));
 		emit_meminit_cell(rtlil_memory, bit_offset / width, big_endian, data1, mask1);
 		processed += length;
 	}

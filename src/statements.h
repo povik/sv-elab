@@ -89,9 +89,9 @@ struct SwitchHelper
 	ir::Net compute_condition(NetlistContext &netlist, const std::vector<ValuePattern> &compare)
 	{
 		if (compare.empty())
-			return ir::S1;
+			return Trit::S1;
 
-		ir::Net cond = ir::S0;
+		ir::Net cond = Trit::S0;
 		for (auto &pat : compare)
 			cond = netlist.LogicOr(cond, matches_pattern(netlist, pat, dispatch));
 		return cond;
@@ -138,7 +138,7 @@ struct SwitchHelper
 	{
 		uint64_t full_width = dispatch.size();
 		uint64_t width = full_width;
-		while (width > 0 && dispatch[width - 1] == ir::S0)
+		while (width > 0 && dispatch[width - 1] == Trit::S0)
 			width--;
 		if (width == 0 || width > 16)
 			return false;
@@ -155,7 +155,7 @@ struct SwitchHelper
 
 					bool skip_pattern = false;
 					for (uint64_t i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
+						if (pat.bits[i] != PatternBit(Trit::S0) && !pat.bits[i].is_wildcard()) {
 							skip_pattern = true;
 							break;
 						}
@@ -170,9 +170,9 @@ struct SwitchHelper
 						auto bit = pat.bits[i];
 						if (bit.is_wildcard()) {
 							dc_mask |= ((uint64_t)1) << i;
-						} else if (pat.bits[i] == PatternBit(ir::S1)) {
+						} else if (pat.bits[i] == PatternBit(Trit::S1)) {
 							base |= ((uint64_t)1) << i;
-						} else if (pat.bits[i] == PatternBit(ir::S0)) {
+						} else if (pat.bits[i] == PatternBit(Trit::S0)) {
 							// do nothing
 						} else {
 							skip_pattern = true;
@@ -201,7 +201,7 @@ struct SwitchHelper
 	{
 		int full_width = dispatch.size();
 		int width = full_width;
-		while (width > 0 && dispatch[width - 1] == ir::S0)
+		while (width > 0 && dispatch[width - 1] == Trit::S0)
 			width--;
 		if (width == 0)
 			return false;
@@ -217,7 +217,7 @@ struct SwitchHelper
 
 					bool skip_pattern = false;
 					for (int i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
+						if (pat.bits[i] != PatternBit(Trit::S0) && !pat.bits[i].is_wildcard()) {
 							if (!pat.bits[i].is_const())
 								return false;
 							skip_pattern = true;
@@ -244,12 +244,12 @@ struct SwitchHelper
 	{
 		int full_width = dispatch.size();
 		int width = full_width;
-		while (width > 0 && dispatch[width - 1] == ir::S0)
+		while (width > 0 && dispatch[width - 1] == Trit::S0)
 			width--;
 		ir::Value bmux_a;
 
 		if (full_case)
-			bmux_a = ir::Value(ir::Sx, background.width() << width);
+			bmux_a = ir::Net(Trit::Sx).repeat(background.width() << width);
 		else
 			bmux_a = background.repeat(1 << width);
 
@@ -275,7 +275,7 @@ struct SwitchHelper
 
 					bool ignore_pattern = false;
 					for (int i = width; i < pat.size(); i++) {
-						if (pat.bits[i] != PatternBit(ir::S0) && !pat.bits[i].is_wildcard()) {
+						if (pat.bits[i] != PatternBit(Trit::S0) && !pat.bits[i].is_wildcard()) {
 							assert(pat.bits[i].is_const());
 							ignore_pattern = true;
 							break;
@@ -291,11 +291,11 @@ struct SwitchHelper
 						auto bit = pat.bits[i];
 						if (bit.is_wildcard()) {
 							dc_mask |= ((uint64_t)1) << i;
-						} else if (pat.bits[i] == PatternBit(ir::S1)) {
+						} else if (pat.bits[i] == PatternBit(Trit::S1)) {
 							base |= ((uint64_t)1) << i;
-						} else if (pat.bits[i] == PatternBit(ir::S0)) {
+						} else if (pat.bits[i] == PatternBit(Trit::S0)) {
 							// do nothing
-						} else if (pat.bits[i] == PatternBit(ir::Sx)) {
+						} else if (pat.bits[i] == PatternBit(Trit::Sx)) {
 							ignore_pattern = true;
 						} else {
 							// We should not reach this point
@@ -341,12 +341,12 @@ struct SwitchHelper
 			if (chunk.variable.kind != Variable::Static && eos_variables.count(chunk.variable)) {
 				for (uint64_t i = 0; i < chunk.bitwidth(); i++)
 					assert_invariant(!va.count(chunk[i]));
-				background.append(ir::Value(ir::Sx, chunk.bitwidth()));
+				background.append(ir::Net(Trit::Sx).repeat(chunk.bitwidth()));
 				continue;
 			}
 			background.append(vstate.evaluate(netlist, chunk));
 			if (full_case)
-				vstate.set(chunk, ir::Value(ir::Sx, chunk.bitwidth()));
+				vstate.set(chunk, ir::Net(Trit::Sx).repeat(chunk.bitwidth()));
 		}
 
 		if (detect_bmux_criteria()) {
@@ -649,7 +649,7 @@ public:
 			if (dir == ast::ArgumentDirection::In || dir == ast::ArgumentDirection::InOut)
 				arg_in.push_back(eval(*arg));
 			else
-				arg_in.push_back({});
+				arg_in.push_back(ir::Value());
 		}
 
 		slang::SourceLocation loc = call.sourceRange.start();
@@ -683,7 +683,7 @@ public:
 				if (dir == ast::ArgumentDirection::Out || dir == ast::ArgumentDirection::InOut)
 					arg_out.push_back(context.substitute_rvalue(eval.variable(*arg_symbols[i])));
 				else
-					arg_out.push_back({});
+					arg_out.push_back(ir::Value());
 			}
 
 			if (subroutine->returnValVar)
@@ -726,14 +726,15 @@ public:
 		std::vector<SwitchHelper> sw_stack;
 
 		for (auto &stmt : list.list) {
-			ir::Value disable_rv = disable ? context.substitute_rvalue(disable) : ir::Value(ir::S0);
+			ir::Value disable_rv = disable ? context.substitute_rvalue(disable) : ir::Net(Trit::S0);
 			if (!disable_rv.is_fully_const()) {
 				auto &b = sw_stack.emplace_back(context, disable_rv, stmt);
-				b.enter_branch({ir::S0}, stmt);
+				b.enter_branch({Trit::S0}, stmt);
 
 				// From a semantical POV the following is a no-op, but it allows us to
 				// do more constant folding.
-				context.do_simple_assign(slang::SourceLocation::NoLocation, disable, ir::S0, true);
+				context.do_simple_assign(
+						slang::SourceLocation::NoLocation, disable, ir::Net(Trit::S0), true);
 			} else if (disable_rv.as_bool()) {
 				break;
 			} else {
@@ -756,11 +757,11 @@ public:
 
 		ir::Net condition = netlist.ReduceBool(eval(*cond.conditions[0].expr));
 
-		if (condition.is_def()) {
-			if (condition == ir::S1) {
+		if (is_net_def(condition)) {
+			if (condition == Trit::S1) {
 				cond.ifTrue.visit(*this);
 				return;
-			} else if (condition == ir::S0) {
+			} else if (condition == Trit::S0) {
 				if (cond.ifFalse)
 					cond.ifFalse->visit(*this);
 				return;
@@ -770,7 +771,7 @@ public:
 
 		SwitchHelper b(context, condition, &cond);
 
-		b.branch({ir::S1}, [&]() { cond.ifTrue.visit(*this); }, &cond.ifTrue);
+		b.branch({Trit::S1}, [&]() { cond.ifTrue.visit(*this); }, &cond.ifTrue);
 
 		if (cond.ifFalse) {
 			b.branch({}, [&]() { cond.ifFalse->visit(*this); }, cond.ifFalse);
@@ -796,7 +797,7 @@ public:
 
 		ir::Value dispatch = eval(stmt.expr);
 		SwitchHelper b(context,
-				stmt.condition == ast::CaseStatementCondition::Inside ? ir::Value(ir::S1)
+				stmt.condition == ast::CaseStatementCondition::Inside ? ir::Net(Trit::S1)
 																	  : dispatch,
 				&stmt);
 
@@ -833,7 +834,7 @@ public:
 				ValuePattern compare = eval(*expr);
 				if (match_x) {
 					for (auto &bit : compare.bits) {
-						if (bit == PatternBit(ir::Sx)) {
+						if (bit == PatternBit(Trit::Sx)) {
 							bit = PatternBit::wildcard();
 						}
 					}
@@ -867,12 +868,12 @@ public:
 
 			if (!joint_break.is_fully_const()) {
 				auto &b = sw_stack.emplace_back(context, joint_break, &stmt);
-				b.enter_branch({ir::S0}, &stmt.body);
+				b.enter_branch({Trit::S0}, &stmt.body);
 
 				// From a semantical POV the following is a no-op, but it allows us to
 				// do more constant folding.
 				context.do_simple_assign(
-						slang::SourceLocation::NoLocation, guard1.flag, ir::S0, true);
+						slang::SourceLocation::NoLocation, guard1.flag, ir::Net(Trit::S0), true);
 			} else if (joint_break.as_bool()) {
 				break;
 			} else {
@@ -916,7 +917,7 @@ public:
 
 			if (!cv.is_fully_const()) {
 				auto &b = sw_stack.emplace_back(context, cv, &stmt);
-				b.enter_branch({ir::S1}, &stmt.body);
+				b.enter_branch({Trit::S1}, &stmt.body);
 			} else if (!cv.as_bool()) {
 				break;
 			} else {
@@ -932,7 +933,7 @@ public:
 
 			if (!break_rv.is_fully_const()) {
 				auto &b = sw_stack.emplace_back(context, break_rv, &stmt);
-				b.enter_branch({ir::S0}, &stmt.body);
+				b.enter_branch({Trit::S0}, &stmt.body);
 			} else if (break_rv.as_bool()) {
 				break;
 			} else {
@@ -959,7 +960,7 @@ public:
 	{
 		auto set_iterator_value = [this, &stmt](const ast::VariableSymbol &target, int32_t value) {
 			context.do_simple_assign(
-					stmt.sourceRange.start(), eval.variable(target), ir::Const(value, 32), true);
+					stmt.sourceRange.start(), eval.variable(target), TritVector(value, 32), true);
 		};
 
 		std::vector<SwitchHelper> sw_stack;
@@ -988,7 +989,7 @@ public:
 
 			if (!break_rv.is_fully_const()) {
 				auto &b = sw_stack.emplace_back(context, break_rv, &stmt);
-				b.enter_branch({ir::S0}, &stmt.body);
+				b.enter_branch({Trit::S0}, &stmt.body);
 			} else if (break_rv.as_bool()) {
 				break;
 			} else {
@@ -1077,7 +1078,7 @@ public:
 			if (converted) {
 				initval = *converted;
 			} else {
-				initval = ir::Value(ir::Sx, target.bitwidth());
+				initval = ir::Net(Trit::Sx).repeat(target.bitwidth());
 			}
 		}
 		context.do_simple_assign(symbol.location, target, initval, true);

@@ -110,15 +110,15 @@ ValuePattern svint_to_pattern(
 	pat.bits.reserve(svint.getBitWidth());
 	for (int i = 0; i < (int) svint.getBitWidth(); i++)
 	switch (svint[i].value) {
-	case 0: pat.bits.push_back(PatternBit(ir::S0)); break;
-	case 1: pat.bits.push_back(PatternBit(ir::S1)); break;
+	case 0: pat.bits.push_back(PatternBit(Trit::S0)); break;
+	case 1: pat.bits.push_back(PatternBit(Trit::S1)); break;
 	case slang::logic_t::X_VALUE:
-		pat.bits.push_back(wildcard_x ? PatternBit::wildcard() : PatternBit(ir::Sx));
+		pat.bits.push_back(wildcard_x ? PatternBit::wildcard() : PatternBit(Trit::Sx));
 		break;
 	case slang::logic_t::Z_VALUE:
 		if (!wildcard_z)
 			netlist.add_diag(diag::HighImpedanceUnsupported, loc);
-		pat.bits.push_back(wildcard_z ? PatternBit::wildcard() : PatternBit(ir::Sx));
+		pat.bits.push_back(wildcard_z ? PatternBit::wildcard() : PatternBit(Trit::Sx));
 		break;
 	}
 	return pat;
@@ -224,25 +224,25 @@ const std::string module_type_id(const ast::InstanceBodySymbol &sym)
 		return std::string(sym.name) + "$" + instance;
 }
 
-ir::Const NetlistContext::convert_svint(const slang::SVInt &svint,
+TritVector NetlistContext::convert_svint(const slang::SVInt &svint,
 										slang::SourceLocation loc)
 {
-	std::vector<ir::Trit> bits;
+	std::vector<Trit> bits;
 	bits.reserve(svint.getBitWidth());
 	for (int i = 0; i < (int) svint.getBitWidth(); i++)
 	switch (svint[i].value) {
-	case 0: bits.push_back(ir::S0); break;
-	case 1: bits.push_back(ir::S1); break;
-	case slang::logic_t::X_VALUE: bits.push_back(ir::Sx); break;
+	case 0: bits.push_back(Trit::S0); break;
+	case 1: bits.push_back(Trit::S1); break;
+	case slang::logic_t::X_VALUE: bits.push_back(Trit::Sx); break;
 	case slang::logic_t::Z_VALUE: {
 		add_diag(diag::HighImpedanceUnsupported, loc);
-		bits.push_back(ir::Sx); break;
+		bits.push_back(Trit::Sx); break;
 	}
 	}
 	return bits;
 }
 
-const std::optional<ir::Const> NetlistContext::convert_const(const slang::ConstantValue &constval,
+const std::optional<TritVector> NetlistContext::convert_const(const slang::ConstantValue &constval,
 															 slang::SourceLocation loc)
 {
 	if (constval.bad()) {
@@ -271,7 +271,7 @@ const std::optional<ir::Const> NetlistContext::convert_const(const slang::Consta
 	if (constval.isInteger()) {
 		return convert_svint(constval.integer(), loc);
 	} else if (constval.isUnpacked()) {
-		std::vector<ir::Trit> bits;
+		std::vector<Trit> bits;
 		bits.reserve(constval.getBitstreamWidth());
 
 		auto elems = constval.elements();
@@ -433,7 +433,7 @@ bool ValuePattern::is_fully_concrete() const
 bool ValuePattern::is_fully_def() const
 {
 	for (auto &b : bits)
-		if (b.is_wildcard() || !b.net.is_def())
+		if (b.is_wildcard() || !is_net_def(b.net))
 			return false;
 	return true;
 }
@@ -441,7 +441,7 @@ bool ValuePattern::is_fully_def() const
 bool ValuePattern::is_fully_const() const
 {
 	for (auto &b : bits)
-		if (!b.is_wildcard() && !b.net.is_const())
+		if (!b.is_wildcard() && !is_net_const(b.net))
 			return false;
 	return true;
 }
@@ -468,7 +468,7 @@ ir::Net matches_pattern(NetlistContext &netlist, const ValuePattern &pattern, ir
 		sig.append(value[i]);
 		filtered_pat.append(pattern.bits[i].net);
 	}
-	return sig.empty() ? ir::S1 : netlist.Eq(sig, filtered_pat);	
+	return sig.empty() ? Trit::S1 : netlist.Eq(sig, filtered_pat);	
 }
 
 // TODO: revisit against the spec
@@ -549,7 +549,7 @@ ir::Value VariableState::evaluate(NetlistContext &netlist, VariableBits vbits)
 	ir::Value ret;
 	for (auto vbit : vbits) {
 		if (vbit.variable.kind == Variable::Dummy) {
-			ret.append(ir::Sx);
+			ret.append(Trit::Sx);
 		} else if (visible_assignments.count(vbit)) {
 			ret.append(visible_assignments.at(vbit));
 		} else {
@@ -872,10 +872,10 @@ ir::Value handle_past(EvalContext &eval, const ast::CallExpression &call)
 	// Note: Full signature is $past(expr, num_ticks, gating_expr, clocking_event) but we only support first 2 args
 	if (call.arguments().size() > 2) {
 		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange);
-		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
+		return ir::Net(Trit::Sx).repeat(call.type->getBitstreamWidth());
 	}
 	if (!require_single_clock_context(eval, call))
-		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
+		return ir::Net(Trit::Sx).repeat(call.type->getBitstreamWidth());
 
 	// Check num_cycles if specified (2nd argument)
 	int num_cycles = 1;
@@ -907,10 +907,10 @@ ir::Value handle_sampled_value_func(EvalContext &eval, const ast::CallExpression
 	// We don't support the optional clocking_event (2nd) argument
 	if (call.arguments().size() > 1) {
 		netlist.add_diag(diag::PastGatingClockingUnsupported, call.sourceRange) << call.getSubroutineName();
-		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
+		return ir::Net(Trit::Sx).repeat(call.type->getBitstreamWidth());
 	}
 	if (!require_single_clock_context(eval, call))
-		return ir::Value(ir::Sx, call.type->getBitstreamWidth());
+		return ir::Net(Trit::Sx).repeat(call.type->getBitstreamWidth());
 
 	auto arg = call.arguments()[0];
 	ir::Value current_val = eval(*arg);
@@ -930,9 +930,9 @@ ir::Value handle_sampled_value_func(EvalContext &eval, const ast::CallExpression
 	}
 }
 
-static const ir::Const reverse_data(ir::Const &orig, int width)
+static const TritVector reverse_data(TritVector &orig, int width)
 {
-	std::vector<ir::Trit> bits;
+	std::vector<Trit> bits;
 	assert_invariant(orig.size() % width == 0);
 	bits.reserve(orig.size());
 	for (int i = orig.size() - width; i >= 0; i -= width)
@@ -945,11 +945,11 @@ static const ir::Const reverse_data(ir::Const &orig, int width)
  * Copyright (C) 2012  Claire Xenia Wolf <claire@yosyshq.com>
  * Licensed under the ISC License
  */
-int str_to_state_vect(std::vector<ir::Trit> &data, const char *str, uint64_t mem_width, bool is_hex)
+int str_to_state_vect(std::vector<Trit> &data, const char *str, uint64_t mem_width, bool is_hex)
 {
 	// All digits in string (MSB at index 0)
 	std::vector<uint8_t> digits;
-	std::vector<ir::Trit> data_word;
+	std::vector<Trit> data_word;
 	data_word.reserve(mem_width);
 
 	while (*str) {
@@ -977,19 +977,19 @@ int str_to_state_vect(std::vector<ir::Trit> &data, const char *str, uint64_t mem
 		for (int i = 0; i < bits_per_digit; i++) {
 			int bitmask = 1 << i;
 			if (*it == 0xf0)
-				data_word.push_back(ir::Sx);
+				data_word.push_back(Trit::Sx);
 			else if (*it == 0xf1)
-				data_word.push_back(ir::Sx);
+				data_word.push_back(Trit::Sx);
 			else
-				data_word.push_back((*it & bitmask) ? ir::S1 : ir::S0);
+				data_word.push_back((*it & bitmask) ? Trit::S1 : Trit::S0);
 		}
 	}
 
-	ir::Trit msb = data_word.empty() ? ir::S0 : data_word.back();
+	Trit msb = data_word.empty() ? Trit::S0 : data_word.back();
 
 	// Truncate/expand word to memory width
-	if (msb == ir::S0 || msb == ir::S1)
-		data_word.resize(mem_width, ir::S0);
+	if (msb == Trit::S0 || msb == Trit::S1)
+		data_word.resize(mem_width, Trit::S0);
 	else
 		data_word.resize(mem_width, msb);
 
@@ -1095,7 +1095,7 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 		}
 	}
 
-	std::vector<ir::Trit> data;
+	std::vector<Trit> data;
 	uint64_t word_size = target_type.getArrayElementType()->getBitstreamWidth();
 	bool in_comment = false;
 	bool no_jumps = true;
@@ -1107,7 +1107,7 @@ void handle_readmem(ProceduralContext &context, const ast::CallExpression &call)
 	slang::ConstantRange command_range(start_addr, finish_addr);
 
 	auto flush_data = [&]() {
-		ir::Const const_(data);
+		TritVector const_(data);
 		assert(const_.size() % word_size == 0);
 
 		bool needs_reversal = (increment == -1 && target_range.isDescending()) ||
@@ -1329,7 +1329,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			// check if there isn't some other general handling of return
 			// values we should be doing
 			if (assign.left().kind == ast::ExpressionKind::Streaming)
-				ret = {};
+				ret = ir::Value();
 
 			lvalue = lvalue_save;
 			break;
@@ -1386,7 +1386,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			if (procedural && (!in_sva_expression || variable1.kind != Variable::Static)) {
 				if (procedural->timing.kind == ProcessTiming::Initial && ast::NetSymbol::isKind(symbol.kind)) {
 					netlist.add_diag(diag::ReadingNetStateFromInitialBlockUnsupported, expr.sourceRange);
-					ret = ir::Value(ir::Sx, expr.type->getBitstreamWidth());
+					ret = ir::Net(Trit::Sx).repeat(expr.type->getBitstreamWidth());
 					break;
 				}
 				ret = procedural->substitute_rvalue(variable1);
@@ -1405,7 +1405,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			if (unop.op == UnOp::Postincrement || unop.op == UnOp::Preincrement) {
 				require(expr, procedural != nullptr);
 				ir::Value add1 = netlist.Biop(
-						ast::BinaryOperator::Add, left, {ir::S0, ir::S1},
+						ast::BinaryOperator::Add, left, {Trit::S0, Trit::S1},
 						unop.operand().type->isSigned(), unop.operand().type->isSigned(),
 						left.size());
 				procedural->do_simple_assign(expr.sourceRange.start(),
@@ -1417,7 +1417,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			if (unop.op == UnOp::Postdecrement || unop.op == UnOp::Predecrement) {
 				require(expr, procedural != nullptr);
 				ir::Value sub1 = netlist.Biop(
-						ast::BinaryOperator::Subtract, left, {ir::S0, ir::S1},
+						ast::BinaryOperator::Subtract, left, {Trit::S0, Trit::S1},
 						unop.operand().type->isSigned(), unop.operand().type->isSigned(),
 						left.size());
 				procedural->do_simple_assign(expr.sourceRange.start(),
@@ -1448,7 +1448,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 					auto const_result = biop.right().eval(this->const_);
 					if (!const_result || !const_result.isInteger()) {
 						netlist.add_diag(diag::NonconstWildcardEq, expr.sourceRange);
-						return ir::Value(ir::Sx, expr.type->getBitstreamWidth());
+						return ir::Net(Trit::Sx).repeat(expr.type->getBitstreamWidth());
 					}
 					auto pat = svint_to_pattern(netlist, const_result.integer(), true,
 												true, biop.right().sourceRange.start());
@@ -1510,7 +1510,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 
 				// pad to fit target size
 				ast_invariant(conv, stream.size() <= expr.type->getBitstreamWidth());
-				ret = {stream, ir::Value(ir::S0, expr.type->getBitstreamWidth() - stream.size())};
+				ret = {stream, ir::Net(Trit::S0).repeat(expr.type->getBitstreamWidth() - stream.size())};
 			}
 		}
 		break;
@@ -1575,7 +1575,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 			auto &pattern_expr = static_cast<const ast::AssignmentPatternExpressionBase&>(expr);
 			auto elements = pattern_expr.elements();
 
-			ret = {};
+			ret = ir::Value();
 			std::vector<ir::Value> parts;
 			parts.reserve(elements.size());
 			for (auto elem : elements)
@@ -1700,7 +1700,7 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 
 	if (0) {
 error:
-	ret = ir::Value(ir::Sx, expr.type->getBitstreamWidth());
+	ret = ir::Net(Trit::Sx).repeat(expr.type->getBitstreamWidth());
 	}
 
 done:
@@ -1713,7 +1713,7 @@ ir::Value EvalContext::eval_signed(ast::Expression const &expr)
 	assert_invariant(expr.type);
 
 	if (expr.type->isNumeric() && !expr.type->isSigned())
-		return {ir::S0, (*this)(expr)};
+		return {ir::Net(Trit::S0), (*this)(expr)};
 	else
 		return (*this)(expr);
 }
@@ -1955,7 +1955,7 @@ public:
 		}
 
 		{
-			ir::Net event_guard = ir::S1;
+			ir::Net event_guard = Trit::S1;
 			if (clock.iffCondition)
 				event_guard = netlist.ReduceBool(netlist.eval(*clock.iffCondition));
 
@@ -1995,10 +1995,10 @@ public:
 
 							netlist.add_dual_edge_aldff(base_name,
 														timing.triggers[0].signal,
-														ir::S0,
+														Trit::S0,
 														assigned.extract(named_chunk.base - driven_chunk.base, named_chunk.bitwidth()),
 														netlist.convert_static(named_chunk),
-														ir::Value(ir::Sx, named_chunk.bitwidth()),
+														ir::Net(Trit::Sx).repeat(named_chunk.bitwidth()),
 														true);
 						} else {
 							netlist.add_dffe(base_name,
@@ -2071,7 +2071,7 @@ public:
 							auto symbol = named_chunk.variable.get_symbol();
 							std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
 
-							bool has_event_guard = !(event_guard.is_def() && event_guard == ir::S1);
+							bool has_event_guard = !(is_net_def(event_guard) && event_guard == Trit::S1);
 							netlist.add_dffe(base_name,
 											 timing.triggers[0].signal,
 											 has_event_guard ? timing.background_enable : aloads[0].trigger,
@@ -2921,7 +2921,7 @@ public:
 		
 		RTLIL::IdString type = dat_expr ? ID($specify3) : ID($specify2);
 
-		auto en = en_expr ? netlist.eval(*en_expr) : ir::Value(ir::S1);
+		auto en = en_expr ? netlist.eval(*en_expr) : ir::Net(Trit::S1);
 		auto dat = dat_expr ? std::optional(netlist.eval(*dat_expr)) : std::nullopt;
 		bool full = oper == Path::ConnectionKind::Full;	
 
@@ -3009,13 +3009,13 @@ public:
 		auto src_pol = RTLIL::Const(args[0].edge == ast::EdgeKind::PosEdge, 1);
 		auto src_expr = netlist.eval(*args[0].expr);
 		auto src_en = args[0].condition
-				? netlist.eval(*args[0].condition) : ir::Value(ir::S1);
+				? netlist.eval(*args[0].condition) : ir::Net(Trit::S1);
 
 		auto dst_pen = RTLIL::Const(args[1].edge != ast::EdgeKind::None, 1);
 		auto dst_pol = RTLIL::Const(args[1].edge == ast::EdgeKind::PosEdge, 1);
 		auto dst_expr = netlist.eval(*args[1].expr);
 		auto dst_en = args[1].condition
-				? netlist.eval(*args[1].condition) : ir::Value(ir::S1);
+				? netlist.eval(*args[1].condition) : ir::Net(Trit::S1);
 
 		SpecifyTriple limit = eval_specify_triple(*args[2].expr);
 		std::optional<SpecifyTriple> limit2 = std::nullopt;

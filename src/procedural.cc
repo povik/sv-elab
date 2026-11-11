@@ -59,7 +59,7 @@ RegisterEscapeConstructGuard::RegisterEscapeConstructGuard(ProceduralContext &co
 	construct.kind = kind;
 	construct.subroutine = subroutine;
 	construct.flag = flag;
-	context.do_simple_assign(subroutine->location, flag, ir::S0, true);
+	context.do_simple_assign(subroutine->location, flag, ir::Net(Trit::S0), true);
 }
 
 RegisterEscapeConstructGuard::RegisterEscapeConstructGuard(
@@ -71,7 +71,8 @@ RegisterEscapeConstructGuard::RegisterEscapeConstructGuard(
 	auto &construct = context.escape_stack.back();
 	construct.kind = kind;
 	construct.flag = flag;
-	context.do_simple_assign(statement->sourceRange.start(), flag, ir::S0, true);
+	context.do_simple_assign(
+			statement->sourceRange.start(), flag, ir::Net(Trit::S0), true);
 }
 
 ProcessTiming::ProcessTiming(Kind kind) : kind(kind)
@@ -84,7 +85,7 @@ void ProceduralContext::signal_escape(slang::SourceLocation loc, EscapeConstruct
 {
 	auto it = escape_stack.rbegin();
 	while (it != escape_stack.rend()) {
-		do_simple_assign(loc, it->flag, ir::S1, true);
+		do_simple_assign(loc, it->flag, ir::Net(Trit::S1), true);
 		if (it->kind == kind)
 			break;
 		it++;
@@ -166,7 +167,7 @@ VariableBits ProceduralContext::all_driven()
 ir::Net ProceduralContext::case_enable()
 {
 	if (timing.kind == ProcessTiming::Initial) {
-		return ir::S1;
+		return Trit::S1;
 	}
 #ifdef SLANG_MUX_LOWERING
 	return enabled;
@@ -181,7 +182,7 @@ ir::Net ProceduralContext::case_enable()
 void crop_zero_mask(const ir::Value &mask, ir::Value &target)
 {
 	for (int i = mask.size() - 1; i >= 0; i--) {
-		if (mask[i] == ir::S0)
+		if (mask[i] == Trit::S0)
 			target.remove(i, 1);
 	}
 }
@@ -189,7 +190,7 @@ void crop_zero_mask(const ir::Value &mask, ir::Value &target)
 void crop_zero_mask(const ir::Value &mask, VariableBits &target)
 {
 	for (int i = mask.size() - 1; i >= 0; i--) {
-		if (mask[i] == ir::S0)
+		if (mask[i] == Trit::S0)
 			target.remove(i);
 	}
 }
@@ -197,7 +198,7 @@ void crop_zero_mask(const ir::Value &mask, VariableBits &target)
 void crop_undef_mask(const ir::Value &mask, ir::Value &target)
 {
 	for (int i = mask.size() - 1; i >= 0; i--) {
-		if (mask[i] == ir::Sx)
+		if (mask[i] == Trit::Sx)
 			target.remove(i, 1);
 	}
 }
@@ -205,7 +206,7 @@ void crop_undef_mask(const ir::Value &mask, ir::Value &target)
 void crop_undef_mask(const ir::Value &mask, VariableBits &target)
 {
 	for (int i = mask.size() - 1; i >= 0; i--) {
-		if (mask[i] == ir::Sx)
+		if (mask[i] == Trit::Sx)
 			target.remove(i);
 	}
 }
@@ -278,12 +279,12 @@ void ProceduralContext::update_variable_state(slang::SourceLocation loc, Variabl
 			case Variable::Local:
 			case Variable::EscapeFlag:
 				for (uint64_t i = 0; i < size; i++) {
-					initial_locals_state[chunk[i]] = rvalue[base + i].trit();
+					initial_locals_state[chunk[i]] = rvalue[base + i].as_trit();
 				}
 				break;
 			case Variable::Static: {
 				for (uint64_t i = 0; i < size; i++) {
-					netlist.initial_state[chunk[i]] = rvalue[base + i].trit();
+					netlist.initial_state[chunk[i]] = rvalue[base + i].as_trit();
 				}
 				const ast::Symbol &symbol = *chunk.variable.get_symbol();
 				if (netlist.is_inferred_memory(symbol)) {
@@ -321,7 +322,7 @@ void ProceduralContext::update_variable_state(slang::SourceLocation loc, Variabl
 void ProceduralContext::do_simple_assign(
 		slang::SourceLocation loc, VariableBits lvalue, ir::Value rvalue, bool blocking)
 {
-	update_variable_state(loc, lvalue, rvalue, ir::Value(ir::S1, rvalue.size()), blocking);
+	update_variable_state(loc, lvalue, rvalue, ir::Net(Trit::S1).repeat(rvalue.size()), blocking);
 }
 
 ir::Value ProceduralContext::substitute_rvalue(VariableBits bits)
@@ -338,12 +339,12 @@ ir::Value ProceduralContext::substitute_rvalue(VariableBits bits)
 			case Variable::Local:
 			case Variable::EscapeFlag:
 				for (uint64_t i = 0; i < size; i++) {
-					subed.append(initial_locals_state.at(chunk[i], ir::Sx));
+					subed.append(initial_locals_state.at(chunk[i], Trit::Sx));
 				}
 				break;
 			case Variable::Static:
 				for (uint64_t i = 0; i < size; i++) {
-					subed.append(netlist.initial_state.at(chunk[i], ir::Sx));
+					subed.append(netlist.initial_state.at(chunk[i], Trit::Sx));
 				}
 				break;
 			default: assert_invariant(false && "unreachable");
@@ -401,8 +402,10 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 		uint64_t parent_width = member_acc->inner->bitsize;
 		uint64_t pad = parent_width - lvalue.bitsize - member_acc->base_offset;
 		assign_to_lvalue_with_masking(assign, context, *member_acc->inner,
-				{ir::Value(ir::Sx, pad), rvalue, ir::Value(ir::Sx, member_acc->base_offset)},
-				{ir::Value(ir::S0, pad), mask, ir::Value(ir::S0, member_acc->base_offset)},
+				{ir::Net(Trit::Sx).repeat(pad), rvalue,
+						ir::Net(Trit::Sx).repeat(member_acc->base_offset)},
+				{ir::Net(Trit::S0).repeat(pad), mask,
+						ir::Net(Trit::S0).repeat(member_acc->base_offset)},
 				blocking);
 	} else if (auto mem_write = std::get_if<LValue::MemoryWrite>(&lvalue.descriptor)) {
 		auto &netlist = context.netlist;
@@ -414,12 +417,12 @@ void assign_to_lvalue_with_masking(const ast::AssignmentExpression &assign,
 
 		ir::WritePort *port = nullptr;
 
-		ir::Value enable = netlist.Mux(ir::Value(ir::S0, mask.size()), mask,
+		ir::Value enable = netlist.Mux(ir::Net(Trit::S0).repeat(mask.size()), mask,
 				netlist.LogicAnd(context.case_enable(), timing.background_enable));
 
 		if (timing.kind == ProcessTiming::Implicit) {
 			port = netlist.backend->add_write_port(memory, context.preceding_memwr, false, false,
-					ir::Sx, enable, mem_write->address, rvalue);
+					Trit::Sx, enable, mem_write->address, rvalue);
 		} else if (timing.kind == ProcessTiming::EdgeTriggered) {
 			require(assign, timing.triggers.size() == 1);
 			auto &trigger = timing.triggers[0];
@@ -442,7 +445,8 @@ void ProceduralContext::assign_rvalue(const ast::AssignmentExpression &assign, i
 	assign_rvalue(assign, std::move(rvalue), !assign.isNonBlocking());
 }
 
-void ProceduralContext::assign_rvalue(const ast::AssignmentExpression &assign, ir::Value rvalue, bool blocking)
+void ProceduralContext::assign_rvalue(
+		const ast::AssignmentExpression &assign, ir::Value rvalue, bool blocking)
 {
 	if (assign.timingControl && !netlist.settings.ignore_timing.value_or(false))
 		netlist.add_diag(diag::GenericTimingUnsyn, assign.timingControl->sourceRange);
@@ -486,7 +490,7 @@ void ProceduralContext::assign_rvalue(const ast::AssignmentExpression &assign, i
 	auto analyzed_lvalue = LValue::analyze(this->eval, *raw_lexpr, false);
 	if (analyzed_lvalue) {
 		assign_to_lvalue_with_masking(assign, *this, *analyzed_lvalue, rvalue,
-				ir::Value(ir::S1, rvalue.size()), blocking);
+				ir::Net(Trit::S1).repeat(rvalue.size()), blocking);
 	}
 }
 

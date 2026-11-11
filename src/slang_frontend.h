@@ -136,7 +136,7 @@ inline void log_debug(const char*, ...)
 namespace ast = ::slang::ast;
 struct NetlistContext;
 class ProceduralContext;
-class RegisterEscapeConstructGuard;
+class RegisterEscafeConstructGuard;
 class EnterAutomaticScopeGuard;
 class VariableBits;
 struct VariableBit;
@@ -146,6 +146,82 @@ struct Case;
 class LValue;
 struct HierarchyQueue;
 class AttributeGuard;
+
+enum Trit : uint8_t
+{
+	S0 = 0,
+	S1 = 1,
+	Sx = 2
+};
+
+class TritVector {
+  std::vector<Trit> bits_;
+
+public:
+  TritVector() = default;
+  explicit TritVector(int val, uint64_t width)
+  {
+    bits_.reserve(width);
+    for (uint64_t i = 0; i < width; i++) {
+      bits_.push_back(((uint64_t) val >> i) & 1 ? S1 : S0);
+    }
+  }
+  explicit TritVector(Trit t, uint64_t width) : bits_(width, t) {}
+  TritVector(const std::vector<Trit>& bits) : bits_(bits) {}
+
+  int size() const { return (int) bits_.size(); }
+  bool empty() const { return bits_.empty(); }
+
+  TritVector extract(int offset, int length) const
+  {
+    TritVector result;
+    result.bits_.assign(bits_.begin() + offset,
+                        bits_.begin() + offset + length);
+    return result;
+  }
+
+  void append(TritVector other)
+  {
+    bits_.insert(bits_.end(), other.bits_.begin(), other.bits_.end());
+  }
+  void append(Trit t) { bits_.push_back(t); }
+
+  int as_int(bool is_signed = false) const
+  {
+    int result = 0;
+    for (int i = 0; i < size() && i < 32; i++) {
+      if (bits_[i] == S1) {
+        result |= (1 << i);
+      }
+    }
+    if (is_signed && size() > 0 && size() <= 32 && bits_[size() - 1] == S1) {
+      for (int i = size(); i < 32; i++) {
+        result |= (1 << i);
+      }
+    }
+    return result;
+  }
+
+  bool is_fully_undef() const
+  {
+    for (auto& b : bits_) {
+      if (b != Sx) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void set(int i, Trit t) { bits_[i] = t; }
+
+  Trit operator[](int i) const { return bits_[i]; }
+
+  using const_iterator = std::vector<Trit>::const_iterator;
+  const_iterator begin() const { return bits_.begin(); }
+  const_iterator end() const { return bits_.end(); }
+
+  const std::vector<Trit>& bits() const { return bits_; }
+};
 
 class Variable {
 public:
@@ -279,7 +355,7 @@ struct ProcessTiming {
 		EdgeTriggered
 	} kind = Implicit;
 
-	ir::Net background_enable = ir::S1;
+	ir::Net background_enable = Trit::S1;
 	struct Sensitivity {
 		ir::Net signal;
 		bool edge_polarity;
@@ -315,11 +391,11 @@ public:
 	std::unique_ptr<Case> root_case;
 	Case *current_case;
 #else
-	ir::Net enabled = ir::S1;
+	ir::Net enabled = Trit::S1;
 #endif
 
 	// only used when timing.kind==ProcessTiming::Initial
-	hashlib::dict<VariableBit, ir::Trit> initial_locals_state;
+	hashlib::dict<VariableBit, Trit> initial_locals_state;
 	std::vector<ir::WritePort *> preceding_memwr;
 
 private:
@@ -467,7 +543,7 @@ struct BackendGraphBuilderBase {
 	// Set initialization on the driver of `signal`
 	//
 	// `signal` is exactly as returned from an earlier call to `add_placeholder_signal`
-	virtual void set_initialization(ir::Value signal, ir::Const init_value) = 0;
+	virtual void set_initialization(ir::Value signal, TritVector init_value) = 0;
 
 	// clang-format on
 	virtual ir::Memory *add_memory(
@@ -480,7 +556,7 @@ struct BackendGraphBuilderBase {
 	// Add initialization data on the given memory. The data starts
 	// at bit position `base` which does not need be a word boundary
 	virtual void add_memory_init(
-			ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data) = 0;
+			ir::Memory *memory, uint64_t bit_offset, bool big_endian, TritVector data) = 0;
 	// clang-format off
 
 	// Mark a placeholder signal as a module input port.
@@ -498,7 +574,7 @@ struct BackendGraphBuilderBase {
 
 	struct ParameterValue {
 		std::string name;
-		ir::Const value;
+		TritVector value;
 
 		// Indicates the parameter value is a string; some databases (at
 		// least Yosys) use this to set a special flag on the constant
@@ -588,7 +664,7 @@ struct GraphBuilder {
 	// Set initialization on a signal previously returned from `add_placeholder_signal`;
 	// caller is responsible for making sure defined (non-X) initialization is only ever
 	// applied to signal bits directly driven by a register
-	void set_initialization(ir::Value signal, ir::Const init_value);
+	void set_initialization(ir::Value signal, TritVector init_value);
 
 };
 
@@ -701,7 +777,7 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 	std::vector<const ast::NetSymbol *> special_net_symbols;
 
 	// Initial variable state
-	hashlib::dict<VariableBit, ir::Trit> initial_state;
+	hashlib::dict<VariableBit, Trit> initial_state;
 
 	// Flag to disable elaboration; we set this when `scopes_remap` is
 	// incomplete due to prior errors
@@ -739,11 +815,21 @@ struct NetlistContext : GraphBuilder, public DiagnosticIssuer {
 	void register_driven(const ast::Symbol &symbol);
 	void add_continuous_driver(VariableBits lhs, ir::Value rhs);
 
-	ir::Const convert_svint(const slang::SVInt &svint, slang::SourceLocation loc);
-	const std::optional<ir::Const> convert_const(const slang::ConstantValue &constval, slang::SourceLocation loc);
+	TritVector convert_svint(const slang::SVInt &svint, slang::SourceLocation loc);
+	const std::optional<TritVector> convert_const(const slang::ConstantValue &constval, slang::SourceLocation loc);
 
 	void prepare_interface_ports();
 };
+
+inline bool is_net_const(ir::Net net)
+{
+	return net == Trit::S0 || net == Trit::S1 || net == Trit::Sx;
+}
+
+inline bool is_net_def(ir::Net net)
+{
+	return net == Trit::S0 || net == Trit::S1;
+}
 
 // A single bit position in a match pattern: either a concrete net or a wildcard
 struct PatternBit
@@ -755,7 +841,7 @@ struct PatternBit
 	PatternBit(ir::Net n) : kind(Concrete), net(n) {}
 	static PatternBit wildcard() { return {}; }
 	bool is_wildcard() const { return kind == Wildcard; }
-	bool is_const() const { return kind == Wildcard || net.is_const(); }
+	bool is_const() const { return kind == Wildcard || is_net_const(net); }
 	bool operator==(const PatternBit &o) const
 	{
 		if (kind != o.kind)
@@ -772,7 +858,7 @@ struct ValuePattern
 
 	ValuePattern() {}
 	ValuePattern(ir::Net n) : bits{PatternBit(n)} {}
-	ValuePattern(ir::Trit t) : bits{PatternBit(ir::Net(t))} {}
+	ValuePattern(Trit t) : bits{PatternBit(ir::Net(t))} {}
 
 	// All-concrete pattern from an ir::Value (no wildcards)
 	ValuePattern(ir::Value v)
@@ -864,7 +950,7 @@ private:
 	ir::Value shift_down_bitwise(ir::Value val, uint64_t output_len);
 	ir::Value raw_demux(ir::Value val, int64_t from, int64_t to);
 	ir::Value raw_mux(ir::Value val, int64_t from, int64_t to, uint64_t stride);
-	ir::Value embed(ir::Value val, uint64_t output_len, uint64_t stride, ir::Trit padding);
+	ir::Value embed(ir::Value val, uint64_t output_len, uint64_t stride, Trit padding);
 
 	// these summed together are the zero-based index of the bottom item
 	// of the selection
