@@ -500,10 +500,9 @@ struct BackendGraphBuilderBase {
 		std::string name;
 		ir::Const value;
 
-		// Indicates the expression setting this parameter is implicitly
-		// convertible to string; some databases (at least Yosys) use this
-		// to set a special flag on the constant
-		bool implicit_string;
+		// Indicates the parameter value is a string; some databases (at
+		// least Yosys) use this to set a special flag on the constant
+		bool is_string;
 	};
 
 	virtual void add_instance(std::string_view cell_type,
