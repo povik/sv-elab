@@ -13,11 +13,11 @@ bazel_dep(name = "rules_python", version = "2.0.0")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "sv-lang", version = "12.1.0")
+bazel_dep(name = "sv-lang", version = "12.1.0.bcr.1")
 
 single_version_override(
     module_name = "sv-lang",
-    version = "12.1.0",
+    version = "12.1.0.bcr.1",
 )
 
 vendored_hashlib_ext = use_extension("//:dependency_support/hashlib_ext.bzl", "vendored_hashlib")
