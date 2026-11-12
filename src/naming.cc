@@ -56,12 +56,26 @@ static void subfield_names(VariableChunk chunk, uint64_t type_offset, const ast:
 							  : 0;
 
 		assert_invariant(hi > lo);
-		if (lo == 0 && hi == width)
+		if (lo == 0 && hi == width) {
 			ret.emplace_back(VariableChunk{chunk.variable, type_offset, width}, prefix);
-		else
-			// TODO: use hdl indices
-			ret.emplace_back(VariableChunk{chunk.variable, type_offset + lo, hi - lo},
-					prefix + "[" + std::to_string(hi - 1) + ":" + std::to_string(lo) + "]");
+		} else {
+			// Convert the bitstream offsets back to HDL indices.
+			auto range = type->getFixedRange();
+			int64_t right = range.right;
+			auto hdl_index = [&](uint64_t offset) -> int64_t {
+				return range.isDescending() ? right + (int64_t)offset : right - (int64_t)offset;
+			};
+
+			std::string suffix;
+			if (hi - lo == 1)
+				suffix = "[" + std::to_string(hdl_index(lo)) + "]";
+			else
+				suffix = "[" + std::to_string(hdl_index(hi - 1)) + ":" +
+						 std::to_string(hdl_index(lo)) + "]";
+
+			ret.emplace_back(
+					VariableChunk{chunk.variable, type_offset + lo, hi - lo}, prefix + suffix);
+		}
 	}
 }
 

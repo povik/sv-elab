@@ -256,8 +256,17 @@ std::string VariableBit::index_text() const
 {
 	if (variable.bitwidth() == 1)
 		return "";
-	else
-		return "[" + std::to_string(offset) + "]";
+
+	if (auto *symbol = variable.get_symbol()) {
+		const ast::Type *type = &symbol->getType();
+		if (type->isBitstreamType() && type->isFixedSize()) {
+			auto named = generate_subfield_names(VariableChunk{variable, offset, 1}, type);
+			if (named.size() == 1)
+				return named.front().second;
+		}
+	}
+
+	return "[" + std::to_string(offset) + "]";
 }
 
 std::string VariableBit::text() const
