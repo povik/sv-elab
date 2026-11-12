@@ -1,0 +1,17 @@
+# issue 395 duplicate public wire names under --compat=vcs
+read_slang --keep-hierarchy --compat=vcs --top top <<EOF
+module controller (clk, q);
+  input clk;
+  output q;
+  wire q, q;
+  reg r;
+  always @(posedge clk) r <= ~r;
+  assign q = r;
+endmodule
+module top (clk, b);
+  input clk;
+  output b;
+  controller controller_i (.clk(clk), .q(b));
+endmodule
+EOF
+hierarchy -check -top top

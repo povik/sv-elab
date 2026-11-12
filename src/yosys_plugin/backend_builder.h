@@ -73,6 +73,7 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 			ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data) override;
 
 private:
+	std::string dedup_id(std::string name);
 	ir::Value UnopInternal(RTLIL::IdString op, ir::Value a, bool a_signed, uint64_t y_width);
 	ir::Value BiopInternal(RTLIL::IdString op, ir::Value a, ir::Value b, bool a_signed,
 			bool b_signed, uint64_t y_width);

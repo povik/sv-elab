@@ -404,3 +404,15 @@ module r34(output logic [3:0] q);
 		end
 	end
 endmodule
+
+// issue 289 parameterized class function with different specializations
+virtual class r35_cls #(parameter type type_t);
+	static function func(input num);
+		return 0;
+	endfunction
+endclass
+
+module r35(output bit a, output logic b);
+	assign a = r35_cls#(bit)::func(0);
+	assign b = r35_cls#(logic)::func(0);
+endmodule

@@ -32,6 +32,14 @@ std::string BackendGraphBuilder::new_id(std::string base)
 		return std::string("$") + base + "$" + std::to_string(next_id++);
 }
 
+std::string BackendGraphBuilder::dedup_id(std::string name)
+{
+	std::string candidate = name;
+	while (canvas->count_id(RTLIL::IdString(candidate)) != 0)
+		candidate = name + "$" + std::to_string(next_id++);
+	return candidate;
+}
+
 std::pair<std::string, ir::Value> BackendGraphBuilder::add_y_wire(int width)
 {
 	std::string id = new_id();
@@ -566,8 +574,11 @@ ir::Value BackendGraphBuilder::add_placeholder_signal(
 {
 	log_assert(width <= (uint64_t)std::numeric_limits<int>::max());
 	std::string name;
-	if (public_name) {
-		name = std::string(name_suggestion);
+	if (public_name) {		
+		// Names come from symbol hierarchy paths, which can collide for distinct
+		// AST symbols (e.g. function locals of different class specializations,
+		// or duplicate net declarations under compatibility modes).
+		name = dedup_id(std::string(name_suggestion));
 	} else {
 		name = new_id(std::string(name_suggestion));
 	}
