@@ -26,6 +26,7 @@ add_library(yosys-slang ${LIBRARY_TYPE}
     async_pattern.cc
     async_pattern.h
     builder.cc
+    calculate.cc
     diag.cc
     diag.h
     initialization.cc
