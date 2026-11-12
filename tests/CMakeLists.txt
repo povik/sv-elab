@@ -30,6 +30,7 @@ set(ALL_TESTS
     unit/function_call.ys
     unit/expression_attrs.ys
     unit/latch.ys
+    unit/latch_addressing.ys
     unit/selftests.tcl
     various/assign_mixing.ys
     various/assignment_pattern_lhs.ys
@@ -42,6 +43,8 @@ set(ALL_TESTS
     various/dualedge.ys
     various/expr.ys
     various/flop_naming.ys
+    various/forever_diag.ys
+    various/fork_join.ys
     various/formal_define.ys
     various/formal_stmts.ys
     various/hierref_error.ys
@@ -69,6 +72,7 @@ set(ALL_TESTS
     various/pragmas.ys
     various/readmem.ys
     various/readmem_diag.ys
+    various/recursion_diag.ys
     various/regress.ys
     various/specify.ys
     various/stringattrs.ys
