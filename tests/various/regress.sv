@@ -372,3 +372,14 @@ module r31;
 		end
 	end
 endmodule
+
+// issue 424 $bits on hierarchical reference
+module r32_sub(input logic [3:0] x);
+endmodule
+
+module r32(input logic clk, input logic [3:0] d);
+	r32_sub u (.x(d));
+	always @(posedge clk) begin
+		a_width: assert ($bits(u.x) == 4);
+	end
+endmodule

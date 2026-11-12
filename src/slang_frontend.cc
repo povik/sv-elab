@@ -1673,6 +1673,13 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 					auto arg = call.arguments()[0];
 					auto sig = (*this)(*arg);
 					ret = netlist.OneHot0(sig, (int)call.type->getBitstreamWidth());
+				} else if (name == "$bits") {
+					ast_invariant(expr, call.arguments().size() == 1);
+					uint64_t bits = call.arguments()[0]->type->getBitstreamWidth();
+					ret = netlist.convert_svint(
+							slang::SVInt((int)call.type->getBitstreamWidth(), bits,
+										 call.type->isSigned()),
+							expr.sourceRange.start());
 				} else if (name == "$past") {
 					ret = handle_past(*this, call);
 				} else if (name == "$rose") {
