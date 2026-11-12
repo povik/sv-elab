@@ -4,12 +4,14 @@
 // Copyright Martin Povišer <povik@cutebit.org>
 // Distributed under the terms of the ISC license, see LICENSE
 //
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "backend_builder.h"
 #include "slang/ast/expressions/Operator.h"
@@ -17,6 +19,34 @@
 #include "variables.h"
 
 namespace slang_frontend {
+
+namespace {
+
+Trit reduce_and(const TritVector &bits)
+{
+	Trit acc = Trit::S1;
+	for (Trit bit : bits)
+		acc = acc & bit;
+	return acc;
+}
+
+Trit reduce_or(const TritVector &bits)
+{
+	Trit acc = Trit::S0;
+	for (Trit bit : bits)
+		acc = acc | bit;
+	return acc;
+}
+
+Trit reduce_xor(const TritVector &bits)
+{
+	Trit acc = Trit::S0;
+	for (Trit bit : bits)
+		acc = acc ^ bit;
+	return acc;
+}
+
+} // namespace
 
 ir::Net GraphBuilder::ReduceBool(ir::Value a)
 {
@@ -247,6 +277,118 @@ int convert(ir::Net bit)
 ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, bool a_signed,
 		bool b_signed, uint64_t y_width)
 {
+	if (a.is_fully_const() && b.is_fully_const()) {
+		TritVector ac = a.as_const();
+		TritVector bc = b.as_const();
+
+		auto ext = [](const TritVector &c, bool is_signed, uint64_t w) {
+			return c.extended(w, is_signed);
+		};
+
+		switch (op) {
+		case ast::BinaryOperator::BinaryAnd:
+			return ir::Value(ext(ac, a_signed, y_width).and_(ext(bc, b_signed, y_width)));
+		case ast::BinaryOperator::BinaryOr:
+			return ir::Value(ext(ac, a_signed, y_width).or_(ext(bc, b_signed, y_width)));
+		case ast::BinaryOperator::BinaryXor:
+			return ir::Value(ext(ac, a_signed, y_width).xor_(ext(bc, b_signed, y_width)));
+		case ast::BinaryOperator::BinaryXnor:
+			return ir::Value(ext(ac, a_signed, y_width).xor_(ext(bc, b_signed, y_width)).not_());
+		case ast::BinaryOperator::Add: {
+			if (ac.has_undef() || bc.has_undef())
+				return ir::Value(TritVector::undef(y_width));
+			auto ea = ext(ac, a_signed, y_width);
+			auto eb = ext(bc, b_signed, y_width);
+			return ir::Value(ea.adc(eb, Trit::S0).slice(0, y_width));
+		}
+		case ast::BinaryOperator::Subtract: {
+			if (ac.has_undef() || bc.has_undef())
+				return ir::Value(TritVector::undef(y_width));
+			auto ea = ext(ac, a_signed, y_width);
+			auto eb = ext(bc, b_signed, y_width).not_();
+			return ir::Value(ea.adc(eb, Trit::S1).slice(0, y_width));
+		}
+		case ast::BinaryOperator::Multiply:
+			if (ac.has_undef() || bc.has_undef())
+				return ir::Value(TritVector::undef(y_width));
+			return ir::Value(ext(ac, a_signed, y_width).mul(ext(bc, b_signed, y_width)));
+		case ast::BinaryOperator::Equality: {
+			int w = std::max(ac.size(), bc.size());
+			Trit r = ext(ac, a_signed, w).eq(ext(bc, b_signed, w));
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::CaseEquality: {
+			int w = std::max(ac.size(), bc.size());
+			Trit r = ext(ac, a_signed, w).case_eq(ext(bc, b_signed, w));
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::Inequality: {
+			int w = std::max(ac.size(), bc.size());
+			Trit r = !ext(ac, a_signed, w).eq(ext(bc, b_signed, w));
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::CaseInequality: {
+			int w = std::max(ac.size(), bc.size());
+			Trit r = !ext(ac, a_signed, w).case_eq(ext(bc, b_signed, w));
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::LessThan: {
+			int w = std::max(ac.size(), bc.size());
+			auto ea = ext(ac, a_signed, w);
+			auto eb = ext(bc, b_signed, w);
+			Trit r = (a_signed && b_signed) ? ea.slt(eb) : ea.ult(eb);
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::LessThanEqual: {
+			int w = std::max(ac.size(), bc.size());
+			auto ea = ext(ac, a_signed, w);
+			auto eb = ext(bc, b_signed, w);
+			Trit gt = (a_signed && b_signed) ? eb.slt(ea) : eb.ult(ea);
+			return ir::Value(TritVector(!gt, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::GreaterThan: {
+			int w = std::max(ac.size(), bc.size());
+			auto ea = ext(ac, a_signed, w);
+			auto eb = ext(bc, b_signed, w);
+			Trit r = (a_signed && b_signed) ? eb.slt(ea) : eb.ult(ea);
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::GreaterThanEqual: {
+			int w = std::max(ac.size(), bc.size());
+			auto ea = ext(ac, a_signed, w);
+			auto eb = ext(bc, b_signed, w);
+			Trit lt = (a_signed && b_signed) ? ea.slt(eb) : ea.ult(eb);
+			return ir::Value(TritVector(!lt, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::LogicalAnd: {
+			Trit r = reduce_or(ac) & reduce_or(bc);
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::LogicalOr: {
+			Trit r = reduce_or(ac) | reduce_or(bc);
+			return ir::Value(TritVector(r, 1).extended(y_width, false));
+		}
+		case ast::BinaryOperator::LogicalShiftLeft:
+			// const_shl truncates the value to result_len before shifting.
+			return ir::Value(ext(ac, a_signed, y_width).shl(bc, 1));
+		case ast::BinaryOperator::LogicalShiftRight: {
+			// const_shr extends to max(result_len, value width) before shifting.
+			uint64_t w = std::max<uint64_t>(y_width, ac.size());
+			return ir::Value(ext(ac, a_signed, w).ushr(bc, 1).slice(0, y_width));
+		}
+		case ast::BinaryOperator::ArithmeticShiftLeft:
+			return ir::Value(ext(ac, a_signed, y_width).shl(bc, 1));
+		case ast::BinaryOperator::ArithmeticShiftRight: {
+			// const_sshr does not truncate the value before shifting.
+			uint64_t w = std::max<uint64_t>(y_width, ac.size());
+			if (a_signed)
+				return ir::Value(ext(ac, a_signed, w).sshr(bc, 1).slice(0, y_width));
+			return ir::Value(ext(ac, a_signed, w).ushr(bc, 1).slice(0, y_width));
+		}
+		default: break;
+		}
+	}
+
 	if ((op == ast::BinaryOperator::GreaterThanEqual || op == ast::BinaryOperator::GreaterThan ||
 				op == ast::BinaryOperator::LessThanEqual || op == ast::BinaryOperator::LessThan) &&
 			!a.empty() && !b.empty()) {
@@ -336,6 +478,39 @@ ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, b
 
 ir::Value GraphBuilder::Unop(ast::UnaryOperator op, ir::Value a, bool a_signed, uint64_t y_width)
 {
+	if (y_width == 0)
+		return ir::Value();
+
+	if (a.is_fully_const()) {
+		TritVector ac = a.as_const();
+		TritVector ext = ac.extended(y_width, a_signed);
+
+		switch (op) {
+		case ast::UnaryOperator::Plus: return ir::Value(ext);
+		case ast::UnaryOperator::Minus:
+			if (ac.has_undef())
+				return ir::Value(TritVector::undef(y_width));
+			return ir::Value(
+					ext.not_().adc(TritVector::zeros(y_width), Trit::S1).slice(0, y_width));
+		case ast::UnaryOperator::BitwiseNot:  return ir::Value(ext.not_());
+		case ast::UnaryOperator::BitwiseAnd:
+			return ir::Value(TritVector(reduce_and(ac), 1).extended(y_width, false));
+		case ast::UnaryOperator::BitwiseOr:
+			return ir::Value(TritVector(reduce_or(ac), 1).extended(y_width, false));
+		case ast::UnaryOperator::BitwiseXor:
+			return ir::Value(TritVector(reduce_xor(ac), 1).extended(y_width, false));
+		case ast::UnaryOperator::BitwiseXnor:
+			return ir::Value(TritVector(!reduce_xor(ac), 1).extended(y_width, false));
+		case ast::UnaryOperator::BitwiseNand:
+			return ir::Value(TritVector(!reduce_and(ac), 1).extended(y_width, false));
+		case ast::UnaryOperator::BitwiseNor:
+			return ir::Value(TritVector(!reduce_or(ac), 1).extended(y_width, false));
+		case ast::UnaryOperator::LogicalNot:
+			return ir::Value(TritVector(!reduce_or(ac), 1).extended(y_width, false));
+		default: break;
+		}
+	}
+
 	return backend->Unop(op, a, a_signed, y_width);
 }
 

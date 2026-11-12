@@ -152,6 +152,40 @@ class AttributeGuard;
 // clang-format on
 enum Trit : uint8_t { S0 = 0, S1 = 1, Sx = 2 };
 
+inline Trit operator!(Trit a)
+{
+	if (a == Trit::S0)
+		return Trit::S1;
+	if (a == Trit::S1)
+		return Trit::S0;
+	return Trit::Sx;
+}
+
+inline Trit operator&(Trit a, Trit b)
+{
+	if (a == Trit::S0 || b == Trit::S0)
+		return Trit::S0;
+	if (a == Trit::Sx || b == Trit::Sx)
+		return Trit::Sx;
+	return Trit::S1;
+}
+
+inline Trit operator|(Trit a, Trit b)
+{
+	if (a == Trit::S1 || b == Trit::S1)
+		return Trit::S1;
+	if (a == Trit::Sx || b == Trit::Sx)
+		return Trit::Sx;
+	return Trit::S0;
+}
+
+inline Trit operator^(Trit a, Trit b)
+{
+	if (a == Trit::Sx || b == Trit::Sx)
+		return Trit::Sx;
+	return a != b ? Trit::S1 : Trit::S0;
+}
+
 class TritVector
 {
 	std::vector<Trit> bits_;
@@ -179,7 +213,17 @@ public:
 	TritVector(const std::vector<Trit> &bits) : bits_(bits) {}
 
 	int size() const { return (int)bits_.size(); }
+	int width() const { return size(); }
 	bool empty() const { return bits_.empty(); }
+	Trit msb() const { return bits_.back(); }
+	bool has_undef() const;
+
+	static TritVector zeros(uint64_t width);
+	static TritVector ones(uint64_t width);
+	static TritVector undef(uint64_t width);
+
+	TritVector slice(uint64_t offset, uint64_t width) const;
+	TritVector concat(const TritVector &other) const;
 
 	TritVector extract(int offset, int length) const
 	{
@@ -223,6 +267,25 @@ public:
 	void set(int i, Trit t) { bits_[i] = t; }
 
 	Trit operator[](int i) const { return bits_[i]; }
+
+	TritVector not_() const;
+	TritVector and_(const TritVector &other) const;
+	TritVector or_(const TritVector &other) const;
+	TritVector xor_(const TritVector &other) const;
+
+	TritVector adc(const TritVector &other, Trit ci) const;
+
+	Trit eq(const TritVector &other) const;
+	Trit ult(const TritVector &other) const;
+	Trit slt(const TritVector &other) const;
+	Trit case_eq(const TritVector &other) const;
+
+	TritVector shl(const TritVector &amt, uint64_t stride) const;
+	TritVector ushr(const TritVector &amt, uint64_t stride) const;
+	TritVector sshr(const TritVector &amt, uint64_t stride) const;
+
+	TritVector mul(const TritVector &other) const;
+	TritVector extended(uint64_t width, bool is_signed) const;
 
 	using const_iterator = std::vector<Trit>::const_iterator;
 	const_iterator begin() const { return bits_.begin(); }
