@@ -1987,8 +1987,9 @@ public:
 			// TODO: check for non-constant load values and warn about sim/synth mismatch
 		}
 
-		if (aloads.size() > 1) {
-			netlist.add_diag(diag::AloadOne, timed.timing.sourceRange);
+		if (aloads.size() > 2) {
+			auto &diag = netlist.add_diag(diag::HighAloadCount, timed.timing.sourceRange);
+			diag << aloads.size();
 			return;
 		}
 
@@ -2119,6 +2120,129 @@ public:
 											 has_event_guard ? true : !aloads[0].trigger_polarity);
 						}
 					}
+				} else if (aloads.size() == 2) {
+					if (clock.edge == ast::EdgeKind::BothEdges) {
+						netlist.add_diag(diag::DualEdgeSetResetUnsupported, timed.timing.sourceRange);
+						return;
+					}
+
+					// One branch sets the bit to one, the other resets it to zero.
+					struct SrBit {
+						Aload *set_aload = nullptr;
+						Aload *reset_aload = nullptr;
+						// Whether the set branch has priority over the reset branch,
+						// i.e. it comes first in the original if/else chain.
+						bool set_over_reset = false;
+
+						bool operator==(const SrBit &o) const
+						{
+							return set_aload == o.set_aload && reset_aload == o.reset_aload &&
+								   set_over_reset == o.set_over_reset;
+						}
+					};
+
+					std::vector<SrBit> sr_pair;
+					sr_pair.reserve(driven_chunk.bitwidth());
+
+					for (uint64_t i = 0; i < driven_chunk.bitwidth(); i++) {
+						VariableBit vbit = driven_chunk[i];
+
+						enum AloadBranchEffect {
+							One = 0,
+							Zero,
+							Undef,
+							Nonconst,
+							None
+						};
+
+						const std::string_view effect_names[] = {
+							"1", "0", "X", "<non-constant>", "<none>"
+						};
+
+						auto resolve_effect = [&](Aload &aload) -> AloadBranchEffect {
+							auto &final_assignment = aload.values.visible_assignments;
+							auto found = final_assignment.find(vbit);
+
+							if (found == final_assignment.end()) {
+								return None;
+							} else if (found->second == ir::S1) {
+								return One;
+							} else if (found->second == ir::S0) {
+								return Zero;
+							} else if (found->second == ir::Sx) {
+								return Undef;
+							}
+
+							return Nonconst;
+						};
+
+						auto branch1 = resolve_effect(aloads[0]);
+						auto branch2 = resolve_effect(aloads[1]);
+
+						if (branch1 == Zero && branch2 == One) {
+							sr_pair.push_back({&aloads[1], &aloads[0], /* set_over_reset */ false});
+						} else if (branch1 == One && branch2 == Zero) {
+							sr_pair.push_back({&aloads[0], &aloads[1], /* set_over_reset */ true});
+						} else {
+							std::string vbit_name = vbit.text();
+
+							auto &diag = netlist.add_diag(diag::FailedSetResetInference, symbol.location);
+							diag << vbit_name;
+							if (branch1 == None) {
+								auto &note = diag.addNote(diag::NoteMissingAsynchronousAssign, aloads[0].ast_node->sourceRange);
+								note << vbit_name;
+							} else {
+								auto &note = diag.addNote(diag::NoteAsynchronousBranchAssign, aloads[0].ast_node->sourceRange);
+								note << effect_names[branch1] << vbit_name;
+							}
+
+							if (branch2 == None) {
+								auto &note = diag.addNote(diag::NoteMissingAsynchronousAssign, aloads[1].ast_node->sourceRange);
+								note << vbit_name;
+							} else {
+								auto &note = diag.addNote(diag::NoteAsynchronousBranchAssign, aloads[1].ast_node->sourceRange);
+								note << effect_names[branch2] << vbit_name;
+							}
+
+							diag.addNote(diag::NoteSynchronousBranchAssign, sync_body.sourceRange) << vbit_name;
+
+							// Bits for which inference fails are ignored
+							sr_pair.push_back({});
+						}
+					}
+
+					for (uint64_t i = 0; i < driven_chunk.bitwidth();) {
+						uint64_t sr_span = 1;
+						while (i + sr_span < driven_chunk.bitwidth() && sr_pair[i + sr_span] == sr_pair[i])
+							sr_span++;
+
+						SrBit &sr = sr_pair[i];
+						if (sr.set_aload != nullptr && sr.reset_aload != nullptr) {
+							VariableChunk sr_chunk{driven_chunk.variable,
+									driven_chunk.base + i,
+									sr_span};
+							for (auto [named_chunk, name] : generate_subfield_names(sr_chunk, type)) {
+								assert_invariant(named_chunk.variable.get_symbol() != nullptr);
+								auto symbol = named_chunk.variable.get_symbol();
+								std::string base_name = "$driver$"s + netlist.unescaped_id(*symbol) + name;
+								netlist.add_dffsre(base_name,
+											   timing.triggers[0].signal,
+											   event_guard,
+											   sr.set_aload->trigger,
+											   sr.reset_aload->trigger,
+											   assigned.extract(named_chunk.base - driven_chunk.base,
+													   named_chunk.bitwidth()),
+											   netlist.convert_static(named_chunk),
+											   timing.triggers[0].edge_polarity,
+											   sr.set_aload->trigger_polarity,
+											   sr.reset_aload->trigger_polarity,
+											   sr.set_over_reset);
+							}
+						}
+
+						i += sr_span;
+					}
+
 				} else {
 					assert_invariant(false && "unreachable");
 				}

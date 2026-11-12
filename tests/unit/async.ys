@@ -433,3 +433,394 @@ async2sync
 equiv_make async_rstonly_gold async_rstonly_gate async_rstonly_equiv
 equiv_induct async_rstonly_equiv
 equiv_status -assert
+
+# --- SR inference: set branch first (requires gating clear with !set) ---
+design -reset
+read_slang <<EOV
+module dffsr_set_first_gate(input logic clk, input logic s, input logic r,
+		input logic d, output logic q);
+	always_ff @(posedge clk or posedge s or posedge r) begin
+		if (s) q <= 1'b1;
+		else if (r) q <= 1'b0;
+		else q <= d;
+	end
+endmodule
+EOV
+select -assert-count 1 t:$dffsre
+select -clear
+
+read_rtlil <<EOV
+module \dffsr_set_first_gold
+	wire input 1 \clk
+	wire input 2 \s
+	wire input 3 \r
+	wire input 4 \d
+	wire output 5 \q
+	wire $1
+
+	cell $mux $2
+		parameter \WIDTH 1
+		connect \A \r
+		connect \B 1'0
+		connect \S \s
+		connect \Y $1
+	end
+
+	cell $dffsre $3
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN 1'1
+		connect \SET \s
+		connect \CLR $1
+		connect \D \d
+		connect \Q \q
+	end
+end
+EOV
+clk2fflogic
+miter -equiv -make_assert -flatten dffsr_set_first_gold dffsr_set_first_gate dffsr_set_first_miter
+hierarchy -top dffsr_set_first_miter
+sat -verify -prove-asserts -enable_undef -set-init-undef -show-public -seq 3 dffsr_set_first_miter
+
+# --- SR inference: reset branch first ($dffsre's clear priority matches) ---
+design -reset
+read_slang <<EOV
+module dffsr_reset_first_gate(input logic clk, input logic s, input logic r,
+		input logic d, output logic q);
+	always_ff @(posedge clk or posedge s or posedge r) begin
+		if (r) q <= 1'b0;
+		else if (s) q <= 1'b1;
+		else q <= d;
+	end
+endmodule
+EOV
+select -assert-count 1 t:$dffsre
+select -clear
+
+read_rtlil <<EOV
+module \dffsr_reset_first_gold
+	wire input 1 \clk
+	wire input 2 \s
+	wire input 3 \r
+	wire input 4 \d
+	wire output 5 \q
+	wire $1
+
+	cell $mux $2
+		parameter \WIDTH 1
+		connect \A \s
+		connect \B 1'0
+		connect \S \r
+		connect \Y $1
+	end
+
+	cell $dffsre $3
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN 1'1
+		connect \SET $1
+		connect \CLR \r
+		connect \D \d
+		connect \Q \q
+	end
+end
+EOV
+clk2fflogic
+miter -equiv -make_assert -flatten dffsr_reset_first_gold dffsr_reset_first_gate dffsr_reset_first_miter
+hierarchy -top dffsr_reset_first_miter
+sat -verify -prove-asserts -enable_undef -set-init-undef -show-public -seq 3 dffsr_reset_first_miter
+
+# --- SR inference: active-low async inputs, set branch first ---
+design -reset
+read_slang <<EOV
+module dffsr_active_low_gate(input logic clk, input logic set_n, input logic rst_n,
+		input logic d, output logic q);
+	always_ff @(posedge clk or negedge set_n or negedge rst_n) begin
+		if (!set_n) q <= 1'b1;
+		else if (!rst_n) q <= 1'b0;
+		else q <= d;
+	end
+endmodule
+EOV
+select -assert-count 1 t:$dffsre
+select -clear
+
+read_rtlil <<EOV
+module \dffsr_active_low_gold
+	wire input 1 \clk
+	wire input 2 \set_n
+	wire input 3 \rst_n
+	wire input 4 \d
+	wire output 5 \q
+	wire $1
+	wire $4
+	wire $5
+
+	cell $not $2
+		parameter \A_SIGNED 0
+		parameter \A_WIDTH 1
+		parameter \Y_WIDTH 1
+		connect \A \set_n
+		connect \Y $1
+	end
+
+	cell $not $3
+		parameter \A_SIGNED 0
+		parameter \A_WIDTH 1
+		parameter \Y_WIDTH 1
+		connect \A \rst_n
+		connect \Y $4
+	end
+
+	cell $mux $6
+		parameter \WIDTH 1
+		connect \A $4
+		connect \B 1'0
+		connect \S $1
+		connect \Y $5
+	end
+
+	cell $dffsre $7
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN 1'1
+		connect \SET $1
+		connect \CLR $5
+		connect \D \d
+		connect \Q \q
+	end
+end
+EOV
+clk2fflogic
+miter -equiv -make_assert -flatten dffsr_active_low_gold dffsr_active_low_gate dffsr_active_low_miter
+hierarchy -top dffsr_active_low_miter
+sat -verify -prove-asserts -enable_undef -set-init-undef -show-public -seq 3 dffsr_active_low_miter
+
+# --- SR inference: per-bit mixed priority within one vector ---
+design -reset
+read_slang <<EOV
+module dffsr_mixed_gate(input logic clk, input logic s, input logic r,
+		input logic [1:0] d, output logic [1:0] q);
+	always_ff @(posedge clk or posedge s or posedge r) begin
+		if (s) begin
+			q[0] <= 1'b1;
+			q[1] <= 1'b0;
+		end else if (r) begin
+			q[0] <= 1'b0;
+			q[1] <= 1'b1;
+		end else begin
+			q <= d;
+		end
+	end
+endmodule
+EOV
+select -assert-count 2 t:$dffsre
+select -clear
+
+read_rtlil <<EOV
+module \dffsr_mixed_gold
+	wire input 1 \clk
+	wire input 2 \s
+	wire input 3 \r
+	wire width 2 input 4 \d
+	wire width 2 output 5 \q
+	wire $1
+
+	cell $mux $2
+		parameter \WIDTH 1
+		connect \A \r
+		connect \B 1'0
+		connect \S \s
+		connect \Y $1
+	end
+
+	cell $dffsre $3
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN 1'1
+		connect \SET \s
+		connect \CLR $1
+		connect \D \d [0]
+		connect \Q \q [0]
+	end
+
+	cell $dffsre $4
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN 1'1
+		connect \SET $1
+		connect \CLR \s
+		connect \D \d [1]
+		connect \Q \q [1]
+	end
+end
+EOV
+clk2fflogic
+miter -equiv -make_assert -flatten dffsr_mixed_gold dffsr_mixed_gate dffsr_mixed_miter
+hierarchy -top dffsr_mixed_miter
+sat -verify -prove-asserts -enable_undef -set-init-undef -show-public -seq 3 dffsr_mixed_miter
+
+# --- SR inference combined with clock enable (iff) ---
+design -reset
+read_slang <<EOV
+module dffsr_iff_gate(input logic clk, input logic en, input logic s, input logic r,
+		input logic d, output logic q);
+	always_ff @(posedge clk iff en or posedge s or posedge r) begin
+		if (s) q <= 1'b1;
+		else if (r) q <= 1'b0;
+		else q <= d;
+	end
+endmodule
+EOV
+select -assert-count 1 t:$dffsre
+select -clear
+
+read_rtlil <<EOV
+module \dffsr_iff_gold
+	wire input 1 \clk
+	wire input 2 \en
+	wire input 3 \s
+	wire input 4 \r
+	wire input 5 \d
+	wire output 6 \q
+	wire $1
+
+	cell $mux $2
+		parameter \WIDTH 1
+		connect \A \r
+		connect \B 1'0
+		connect \S \s
+		connect \Y $1
+	end
+
+	cell $dffsre $3
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN \en
+		connect \SET \s
+		connect \CLR $1
+		connect \D \d
+		connect \Q \q
+	end
+end
+EOV
+clk2fflogic
+miter -equiv -make_assert -flatten dffsr_iff_gold dffsr_iff_gate dffsr_iff_miter
+hierarchy -top dffsr_iff_miter
+sat -verify -prove-asserts -enable_undef -set-init-undef -show-public -seq 3 dffsr_iff_miter
+
+# --- SR inference: more than two asynchronous branches is rejected ---
+design -reset
+test_slangdiag -expect "process has 3 asynchronous load branches, at most 2 are supported"
+read_slang <<EOV
+module dffsr_too_many(input logic clk, input logic a, input logic b, input logic c,
+		input logic d, output logic q);
+	always_ff @(posedge clk or posedge a or posedge b or posedge c) begin
+		if (a) q <= 1'b1;
+		else if (b) q <= 1'b0;
+		else if (c) q <= 1'b1;
+		else q <= d;
+	end
+endmodule
+EOV
+
+# --- SR inference: branches which cannot be resolved to set/reset are rejected ---
+design -reset
+test_slangdiag -expect "failed to infer asynchronous set/reset pattern on driver of 'dffsr_bad.q'"
+read_slang <<EOV
+module dffsr_bad(input logic clk, input logic s, input logic r,
+		input logic d, output logic q);
+	always_ff @(posedge clk or posedge s or posedge r) begin
+		if (s) q <= 1'b1;
+		else if (r) q <= 1'b1;
+		else q <= d;
+	end
+endmodule
+EOV
+
+# --- SR inference: asynchronous set/reset on a dual-edge clock is rejected ---
+design -reset
+test_slangdiag -expect "asynchronous set/reset unsupported on dual edge clock registers"
+read_slang --allow-dual-edge-ff <<EOV
+module dffsr_dual_edge(input logic clk, input logic s, input logic r,
+		input logic d, output logic q);
+	always_ff @(edge clk or posedge s or posedge r) begin
+		if (s) q <= 1'b1;
+		else if (r) q <= 1'b0;
+		else q <= d;
+	end
+endmodule
+EOV
+
+# --- SR inference: synchronous branch may leave the value unchanged ---
+design -reset
+read_slang <<EOV
+module dffsr_hold_gate(input logic clk, input logic s, input logic r, output logic q);
+	always_ff @(posedge clk or posedge s or posedge r) begin
+		if (s) q <= 1'b1;
+		else if (r) q <= 1'b0;
+		else begin end
+	end
+endmodule
+EOV
+select -assert-count 1 t:$dffsre
+select -clear
+read_rtlil <<EOV
+module \dffsr_hold_gold
+	wire input 1 \clk
+	wire input 2 \s
+	wire input 3 \r
+	wire output 4 \q
+	wire $1
+
+	cell $mux $2
+		parameter \WIDTH 1
+		connect \A \r
+		connect \B 1'0
+		connect \S \s
+		connect \Y $1
+	end
+
+	cell $dffsre $3
+		parameter \CLK_POLARITY 1
+		parameter \EN_POLARITY 1
+		parameter \SET_POLARITY 1
+		parameter \CLR_POLARITY 1
+		parameter \WIDTH 1
+		connect \CLK \clk
+		connect \EN 1'1
+		connect \SET \s
+		connect \CLR $1
+		connect \D \q
+		connect \Q \q
+	end
+end
+EOV
+clk2fflogic
+miter -equiv -make_assert -flatten dffsr_hold_gold dffsr_hold_gate dffsr_hold_miter
+hierarchy -top dffsr_hold_miter
+sat -verify -prove-asserts -enable_undef -set-init-undef -show-public -seq 3 dffsr_hold_miter

@@ -366,6 +366,31 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 	bless_object(cell);
 }
 
+void BackendGraphBuilder::add_dffsre(std::string_view name, const ir::Net clk, const ir::Net en,
+		const ir::Net set, const ir::Net clear, const ir::Value &d, const ir::Value &q,
+		bool clk_polarity, bool set_polarity, bool clear_polarity, bool set_over_clear)
+{
+	// $dffsr/$dffsre set+clear conflict is undefined (Yosys #5655); follow yosys's
+	// own code and gate the lower priority input to represent priority
+	RTLIL::SigSpec set_sig(set.raw());
+	RTLIL::SigSpec clear_sig(clear.raw());
+	if (!set_polarity)
+		set_sig = canvas->Not(NEW_ID, set_sig);
+	if (!clear_polarity)
+		clear_sig = canvas->Not(NEW_ID, clear_sig);
+	if (set_over_clear)
+		clear_sig = canvas->And(NEW_ID, clear_sig, canvas->Not(NEW_ID, set_sig));
+	else
+		set_sig = canvas->And(NEW_ID, set_sig, canvas->Not(NEW_ID, clear_sig));
+
+	ir::Value set_vec = ir::Value(set_sig).repeat(d.size());
+	ir::Value clear_vec = ir::Value(clear_sig).repeat(d.size());
+	RTLIL::Cell *cell = canvas->addDffsre(canvas->uniquify(name), RTLIL::SigBit(clk),
+			RTLIL::SigBit(en), set_vec, clear_vec, d, q, clk_polarity,
+			/* en_polarity */ true, /* set_polarity */ true, /* clear_polarity */ true);
+	bless_object(cell);
+}
+
 void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::string_view name,
 		std::span<PortConnection> port_connections, std::span<ParameterValue> param_values)
 {
