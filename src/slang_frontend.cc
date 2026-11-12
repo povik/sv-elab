@@ -3964,6 +3964,15 @@ void catch_forbidden_options(slang::driver::Driver &driver) {
 
 void fixup_options(SynthesisSettings &settings, slang::driver::Driver &driver)
 {
+	// Waivers can suppress error diagnostics that netlist construction depends
+	// on, leaving error-typed AST nodes and undefined behavior downstream.
+	if (!driver.options.waiverFiles.empty()) {
+		slang::Diagnostic d(diag::OptionRequiresStandaloneSlang, slang::SourceLocation::NoLocation);
+		d << "--waiver-file"sv;
+		driver.diagEngine.issue(d);
+		driver.options.waiverFiles.clear();
+	}
+
 	if (settings.compat_mode.has_value()) {
 		slang::Diagnostic d(diag::DeprecatedOption, slang::SourceLocation::NoLocation);
 		d << std::string_view("--compat-mode");
