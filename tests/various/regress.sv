@@ -392,3 +392,15 @@ module r33(output logic [31:0] w);
 	r33_leaf u ();
 	assign w = u.P[1];
 endmodule
+
+// issue 129 a terminating forever loop is unrolled and synthesized
+module r34(output logic [3:0] q);
+	initial begin
+		int i = 0;
+		forever begin
+			if (i == 4) break;
+			q[i] = 1;
+			i = i + 1;
+		end
+	end
+endmodule

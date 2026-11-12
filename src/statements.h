@@ -863,19 +863,22 @@ public:
 		context.descend_into_empty_case();
 	}
 
-	void handle(const ast::WhileLoopStatement &stmt)
+	void handle_loop(
+			const ast::Statement &stmt, const ast::Statement &body, const ast::Expression *cond)
 	{
 		RegisterEscapeConstructGuard guard1(context, EscapeConstructKind::Loop, &stmt);
 		std::vector<SwitchHelper> sw_stack;
 		unroll_limit.enter_unrolling();
 		while (true) {
-			ir::Value cv = netlist.ReduceBool(eval(stmt.cond));
+			ir::Value cv = ir::S1;
+			if (cond)
+				cv = netlist.ReduceBool(eval(*cond));
 			ir::Value break_rv = context.substitute_rvalue(guard1.flag);
 			ir::Value joint_break = netlist.LogicOr(netlist.LogicNot(cv), break_rv);
 
 			if (!joint_break.is_fully_const()) {
 				auto &b = sw_stack.emplace_back(context, joint_break, &stmt);
-				b.enter_branch({ir::S0}, &stmt.body);
+				b.enter_branch({ir::S0}, &body);
 
 				// From a semantical POV the following is a no-op, but it allows us to
 				// do more constant folding.
@@ -889,7 +892,7 @@ public:
 
 			{
 				RegisterEscapeConstructGuard guard2(context, EscapeConstructKind::LoopBody, &stmt);
-				stmt.body.visit(*this);
+				body.visit(*this);
 			}
 
 			if (!unroll_limit.unroll_tick(&stmt))
@@ -904,6 +907,10 @@ public:
 
 		context.descend_into_empty_case();
 	}
+
+	void handle(const ast::WhileLoopStatement &stmt) { handle_loop(stmt, stmt.body, &stmt.cond); }
+
+	void handle(const ast::ForeverLoopStatement &stmt) { handle_loop(stmt, stmt.body, nullptr); }
 
 	void handle(const ast::ForLoopStatement &stmt)
 	{

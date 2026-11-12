@@ -1,0 +1,11 @@
+# issue 129 an unbounded forever loop must hit a limit
+test_slangdiag -expect "unroll limit of 32 exhausted [--unroll-limit=]"
+read_slang --unroll-limit=32 <<EOF
+module m();
+  initial begin
+    forever begin
+      continue;
+    end
+  end
+endmodule
+EOF
