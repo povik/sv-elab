@@ -41,7 +41,7 @@ extern slang::DiagCode UnsupportedBlackboxConnection;
 extern slang::DiagCode UnsupportedPortDirection;
 extern slang::DiagCode ModportRequired;
 extern slang::DiagCode FixedSizeRequired;
-extern slang::DiagCode AloadOne;
+extern slang::DiagCode HighAloadCount;
 extern slang::DiagCode BadInlinedPortConnection;
 extern slang::DiagCode NoParamsOnUnkBboxes;
 extern slang::DiagCode BboxTypeParameter;
@@ -99,6 +99,10 @@ extern slang::DiagCode SpecifyRuleUnsupported;
 extern slang::DiagCode SpecifyRuleArgumentsUnsupported;
 extern slang::DiagCode SpecifyRuleMissingArgument;
 extern slang::DiagCode SpecifyRuleEdgeUnsupported;
+extern slang::DiagCode FailedSetResetInference;
+extern slang::DiagCode NoteAsynchronousBranchAssign;
+extern slang::DiagCode NoteMissingAsynchronousAssign;
+extern slang::DiagCode NoteSynchronousBranchAssign;
 
 void setup_messages(slang::DiagnosticEngine &engine);
 }; // namespace diag

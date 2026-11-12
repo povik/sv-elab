@@ -88,7 +88,7 @@ DiagCode UnsupportedBlackboxConnection(DiagSubsystem::Netlist, 1030);
 DiagCode UnsupportedPortDirection(DiagSubsystem::Netlist, 1031);
 DiagCode ModportRequired(DiagSubsystem::Netlist, 1032);
 DiagCode FixedSizeRequired(DiagSubsystem::Netlist, 1033);
-DiagCode AloadOne(DiagSubsystem::Netlist, 1034);
+DiagCode HighAloadCount(DiagSubsystem::Netlist, 1034);
 DiagCode BadInlinedPortConnection(DiagSubsystem::Netlist, 1035);
 DiagCode NoParamsOnUnkBboxes(DiagSubsystem::Netlist, 1037);
 DiagCode BboxTypeParameter(DiagSubsystem::Netlist, 1039);
@@ -147,6 +147,10 @@ DiagCode SpecifyRuleUnsupported(DiagSubsystem::Netlist, 1094);
 DiagCode SpecifyRuleArgumentsUnsupported(DiagSubsystem::Netlist, 1095);
 DiagCode SpecifyRuleMissingArgument(DiagSubsystem::Netlist, 1096);
 DiagCode SpecifyRuleEdgeUnsupported(DiagSubsystem::Netlist, 1097);
+DiagCode FailedSetResetInference(DiagSubsystem::Netlist, 1098);
+DiagCode NoteAsynchronousBranchAssign(DiagSubsystem::Netlist, 1099);
+DiagCode NoteMissingAsynchronousAssign(DiagSubsystem::Netlist, 1100);
+DiagCode NoteSynchronousBranchAssign(DiagSubsystem::Netlist, 1101);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -240,8 +244,8 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	engine.setMessage(FixedSizeRequired, "expression of type {} with dynamic size unsupported for synthesis");
 	engine.setSeverity(FixedSizeRequired, DiagnosticSeverity::Error);
 
-	engine.setMessage(AloadOne, "multiple asynchronous loads unsupported");
-	engine.setSeverity(AloadOne, DiagnosticSeverity::Error);
+	engine.setMessage(HighAloadCount, "process has {} asynchronous load branches, at most 2 are supported");
+	engine.setSeverity(HighAloadCount, DiagnosticSeverity::Error);
 
 	engine.setMessage(BadInlinedPortConnection, "direction '{}' on inlined port connection unsupported");
 	engine.setSeverity(BadInlinedPortConnection, DiagnosticSeverity::Error);
@@ -405,6 +409,18 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	
 	engine.setMessage(SpecifyRuleEdgeUnsupported, "unsupported edge for specify rule '{}'");
 	engine.setSeverity(SpecifyRuleEdgeUnsupported, DiagnosticSeverity::Error);
+
+	engine.setMessage(FailedSetResetInference, "failed to infer asynchronous set/reset pattern on driver of '{}'");
+	engine.setSeverity(FailedSetResetInference, DiagnosticSeverity::Error);
+
+	engine.setMessage(NoteAsynchronousBranchAssign, "note this asynchronous branch assigns {} to '{}'");
+	engine.setSeverity(NoteAsynchronousBranchAssign, DiagnosticSeverity::Note);
+
+	engine.setMessage(NoteMissingAsynchronousAssign, "note this asynchronous branch lacks an assignment to '{}'");
+	engine.setSeverity(NoteMissingAsynchronousAssign, DiagnosticSeverity::Note);
+
+	engine.setMessage(NoteSynchronousBranchAssign, "note this synchronous branch assigns to '{}'");
+	engine.setSeverity(NoteSynchronousBranchAssign, DiagnosticSeverity::Note);
 	// clang-format on
 }
 }; // namespace diag

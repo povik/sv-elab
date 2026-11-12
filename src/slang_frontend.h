@@ -529,6 +529,9 @@ struct BackendGraphBuilderBase {
 				   const ir::Net aload,
 				   const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 				   bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true) = 0;
+	virtual void add_dffsre(std::string_view name, const ir::Net clk, const ir::Net en,
+				   const ir::Net set, const ir::Net clear, const ir::Value &d, const ir::Value &q,
+				   bool clk_polarity = true, bool set_polarity = true, bool clear_polarity = true) = 0;
 };
 
 struct BackendGraphBuilder;
@@ -578,6 +581,9 @@ struct GraphBuilder {
 				   const ir::Net aload,
 				   const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 				   bool clk_polarity = true, bool en_polarity = true, bool aload_polarity = true);
+	void add_dffsre(std::string_view name, const ir::Net clk, const ir::Net en,
+				   const ir::Net set, const ir::Net clear, const ir::Value &d, const ir::Value &q,
+				   bool clk_polarity = true, bool set_polarity = true, bool clear_polarity = true);
 
     // Create a placeholder signal which will be connected to a driver using `connect` later
 	ir::Value add_placeholder_signal(uint64_t width, std::string_view name_suggestion=""sv, bool public_name=false);

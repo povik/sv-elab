@@ -491,4 +491,12 @@ void GraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, const ir
 	backend->add_aldffe(name, clk, en, aload, d, q, ad, clk_polarity, en_polarity, aload_polarity);
 }
 
+void GraphBuilder::add_dffsre(std::string_view name, const ir::Net clk, const ir::Net en,
+		const ir::Net set, const ir::Net clear, const ir::Value &d, const ir::Value &q,
+		bool clk_polarity, bool set_polarity, bool clear_polarity)
+{
+	backend->add_dffsre(
+			name, clk, en, set, clear, d, q, clk_polarity, set_polarity, clear_polarity);
+}
+
 }; // namespace slang_frontend

@@ -358,6 +358,16 @@ void BackendGraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, c
 	bless_object(cell);
 }
 
+void BackendGraphBuilder::add_dffsre(std::string_view name, const ir::Net clk, const ir::Net en,
+		const ir::Net set, const ir::Net clear, const ir::Value &d, const ir::Value &q,
+		bool clk_polarity, bool set_polarity, bool clear_polarity)
+{
+	RTLIL::Cell *cell = canvas->addDffsre(canvas->uniquify(name), RTLIL::SigBit(clk),
+			RTLIL::SigBit(en), RTLIL::SigBit(set), RTLIL::SigBit(clear), d, q, clk_polarity,
+			set_polarity, clear_polarity);
+	bless_object(cell);
+}
+
 void BackendGraphBuilder::instantiate_blackbox(std::string_view cell_type, std::string_view name,
 		std::span<PortConnection> port_connections, std::span<ParameterValue> param_values)
 {
