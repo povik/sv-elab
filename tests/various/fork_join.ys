@@ -1,0 +1,3 @@
+# issue 183: fork-join blocks are unsynthesizable
+test_slangdiag -expect "unsynthesizable feature"
+read_slang fork_join.sv

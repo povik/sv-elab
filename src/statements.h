@@ -713,7 +713,10 @@ public:
 
 	void handle(const ast::BlockStatement &blk)
 	{
-		require(blk, blk.blockKind == ast::StatementBlockKind::Sequential);
+		if (blk.blockKind != ast::StatementBlockKind::Sequential) {
+			netlist.add_diag(diag::UnsynthesizableFeature, blk.sourceRange);
+			return;
+		}
 		EnterAutomaticScopeGuard guard(context.eval, blk.blockSymbol);
 
 		if (blk.blockSymbol) {
