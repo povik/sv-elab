@@ -1378,7 +1378,10 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 	case ast::ExpressionKind::HierarchicalValue:
 		{
 			const ast::ValueSymbol &symbol = expr.as<ast::ValueExpressionBase>().symbol;
-			if (!netlist.scopes_remap.count(symbol.getParentScope())
+			// Parameters are constants; reading one across a preserved module
+			// boundary does not require resolving a net in the child instance.
+			if (!ast::ParameterSymbol::isKind(symbol.kind)
+					&& !netlist.scopes_remap.count(symbol.getParentScope())
 					&& !netlist.check_hier_ref(symbol, expr.sourceRange)) {
 				goto error;
 			}
@@ -1396,8 +1399,9 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 				auto &valsym = symbol.as<ast::ValueSymbol>();
 				require(valsym, valsym.getInitializer());
 				auto exprconst = valsym.getInitializer()->eval(this->const_);
-				require(valsym, exprconst.isInteger());
-				return netlist.convert_svint(exprconst.integer(), valsym.location);
+				if (auto converted = netlist.convert_const(exprconst, valsym.location))
+					return *converted;
+				return ir::Value(ir::Sx, expr.type->getBitstreamWidth());
 			}
 
 			if (ast::ModportPortSymbol::isKind(symbol.kind) &&

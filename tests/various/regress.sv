@@ -383,3 +383,12 @@ module r32(input logic clk, input logic [3:0] d);
 		a_width: assert ($bits(u.x) == 4);
 	end
 endmodule
+
+// issue 423 read of an unpacked array parameter via a hierarchical reference
+module r33_leaf #(parameter int P[2] = '{0, 3}) ();
+endmodule
+
+module r33(output logic [31:0] w);
+	r33_leaf u ();
+	assign w = u.P[1];
+endmodule
