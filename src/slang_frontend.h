@@ -108,8 +108,18 @@ template <typename T> IdString intern_id(T *owner, std::string_view name)
 {
 	return owner->twines().add(name);
 }
+
+template <typename T> IdString lookup_id(T *owner, std::string_view name)
+{
+	return owner->twines().find(name);
+}
 #else
 template <typename T> IdString intern_id(T *, std::string_view name)
+{
+	return std::string(name);
+}
+
+template <typename T> IdString lookup_id(T *, std::string_view name)
 {
 	return std::string(name);
 }
