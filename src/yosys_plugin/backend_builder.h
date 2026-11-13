@@ -41,7 +41,7 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 	ir::Value add_placeholder_signal(uint64_t width, std::string_view name_suggestion = ""sv,
 			bool public_name = false) override;
 	void connect(ir::Value target, ir::Value source) override;
-	void set_initialization(ir::Value signal, ir::Const init_value) override;
+	void set_initialization(ir::Value signal, TritVector init_value) override;
 	void add_dual_edge_aldff(const std::string &base_name, ir::Net clk, ir::Net aload,
 			const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 			bool aload_polarity) override;
@@ -74,7 +74,7 @@ struct BackendGraphBuilder : BackendGraphBuilderBase
 			bool clocked, bool clock_polarity, ir::Net clk, const ir::Value &enable,
 			const ir::Value &address, const ir::Value &data) override;
 	void add_memory_init(
-			ir::Memory *memory, uint64_t bit_offset, bool big_endian, ir::Const data) override;
+			ir::Memory *memory, uint64_t bit_offset, bool big_endian, TritVector data) override;
 
 private:
 	std::string dedup_id(std::string name);
@@ -84,7 +84,7 @@ private:
 
 	int meminit_prio_counter = 0;
 	void emit_meminit_cell(RTLIL::Memory *mem, uint64_t word_offset, bool big_endian,
-			ir::Const data, ir::Const mask);
+			TritVector data, TritVector mask);
 
 	std::pair<std::string, ir::Value> add_y_wire(int width);
 	// apply attributes to newly created cell

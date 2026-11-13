@@ -25,16 +25,16 @@ ir::Net GraphBuilder::ReduceBool(ir::Value a)
 
 	bool seen_x = false, seen_nonconst = false;
 	for (ir::Net bit : a) {
-		if (!bit.is_const())
-			seen_nonconst = true;
-		else if (bit == ir::S1)
-			return ir::S1;
-		else if (bit == ir::Sx)
+		if (bit == Trit::S1)
+			return Trit::S1;
+		else if (bit == Trit::Sx)
 			seen_x = true;
+		else if (bit != Trit::S0)
+			seen_nonconst = true;
 	}
 
 	if (!seen_nonconst)
-		return seen_x ? ir::Sx : ir::S0;
+		return seen_x ? Trit::Sx : Trit::S0;
 
 	return Unop(ast::UnaryOperator::BitwiseOr, a, false, 1).as_net();
 }
@@ -43,7 +43,7 @@ ir::Value GraphBuilder::Demux(ir::Value a, ir::Value s)
 {
 	assert_invariant(s.size() < 24);
 	if (s.is_fully_const()) {
-		ir::Value zeropad(ir::S0, a.size());
+		ir::Value zeropad = ir::Net(Trit::S0).repeat(a.size());
 		int idx_const = s.as_const().as_int();
 		return {zeropad.repeat((1 << s.size()) - 1 - idx_const), a, zeropad.repeat(idx_const)};
 	}
@@ -74,7 +74,7 @@ ir::Net GraphBuilder::Eq(ir::Value a, ir::Value b)
 ir::Net GraphBuilder::LogicAnd(ir::Value a, ir::Value b)
 {
 	if (a.is_fully_zero() || b.is_fully_zero())
-		return ir::S0;
+		return Trit::S0;
 	if (a.is_fully_ones() && b.size() == 1)
 		return b.as_net();
 	if (b.is_fully_ones() && a.size() == 1)
@@ -86,7 +86,7 @@ ir::Net GraphBuilder::LogicAnd(ir::Value a, ir::Value b)
 ir::Net GraphBuilder::LogicOr(ir::Value a, ir::Value b)
 {
 	if (a.is_fully_ones() || b.is_fully_ones())
-		return ir::S1;
+		return Trit::S1;
 	if (a.is_fully_zero() && b.size() == 1)
 		return b.as_net();
 	if (b.is_fully_zero() && a.size() == 1)
@@ -105,11 +105,11 @@ ir::Value GraphBuilder::Mux(ir::Value a, ir::Value b, ir::Net s)
 	assert_invariant(a.size() == b.size());
 	if (a == b)
 		return a;
-	if (a == ir::S0 && b == ir::S1)
+	if (a == ir::Net(Trit::S0) && b == ir::Net(Trit::S1))
 		return s;
-	if (s == ir::S0)
+	if (s == Trit::S0)
 		return a;
-	if (s == ir::S1)
+	if (s == Trit::S1)
 		return b;
 	return backend->Mux(a, b, s);
 }
@@ -119,11 +119,11 @@ ir::Value GraphBuilder::Bwmux(ir::Value a, ir::Value b, ir::Value s)
 	assert_invariant(a.size() == b.size());
 	assert_invariant(a.size() == s.size());
 	if (s.is_fully_const()) {
-		ir::Value result(ir::Sx, a.size());
+		ir::Value result = ir::Net(Trit::Sx).repeat(a.size());
 		for (uint64_t i = 0; i < a.size(); i++) {
-			if (s[i] == ir::S0)
+			if (s[i] == Trit::S0)
 				result[i] = a[i];
-			else if (s[i] == ir::S1)
+			else if (s[i] == Trit::S1)
 				result[i] = b[i];
 		}
 		return result;
@@ -136,13 +136,13 @@ ir::Value GraphBuilder::Shift(ir::Value a, ir::Value b, bool b_signed, uint64_t 
 {
 	if (b.is_fully_const() && b.size() < 32) {
 		assert_invariant(!a.empty());
-		int shift_amount = b.as_int(b_signed);
+		int shift_amount = b.as_const().as_int(b_signed);
 		ir::Value ret;
 		int i;
 		uint64_t j;
 		for (i = shift_amount, j = 0; j < result_width; i++, j++) {
 			if (i >= (int)a.size() || i < 0)
-				ret.append(ir::S0);
+				ret.append(Trit::S0);
 			else
 				ret.append(a[i]);
 		}
@@ -156,13 +156,13 @@ ir::Value GraphBuilder::Shiftx(ir::Value a, ir::Value b, bool b_signed, uint64_t
 {
 	if (b.is_fully_const() && b.size() < 32) {
 		assert_invariant(!a.empty());
-		int shift_amount = b.as_int(b_signed);
+		int shift_amount = b.as_const().as_int(b_signed);
 		ir::Value ret;
 		int i;
 		uint64_t j;
 		for (i = shift_amount, j = 0; j < result_width; i++, j++) {
 			if (i >= (int)a.size() || i < 0)
-				ret.append(ir::Sx);
+				ret.append(Trit::Sx);
 			else
 				ret.append(a[i]);
 		}
@@ -235,9 +235,9 @@ int CARRY(int a, int b, int c)
 
 int convert(ir::Net bit)
 {
-	if (bit == ir::S1)
+	if (bit == Trit::S1)
 		return 1;
-	else if (bit == ir::S0)
+	else if (bit == Trit::S0)
 		return -1;
 	else
 		return 0;
@@ -275,10 +275,10 @@ ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, b
 		bool seen_undef_bit = false;
 
 		for (uint64_t i = 0; i < width; i++) {
-			ir::Net abit = i < a.size() ? ir::Net(a[i]) : (a_signed ? a.msb() : ir::Net(ir::S0));
-			ir::Net bbit = i < b.size() ? ir::Net(b[i]) : (b_signed ? b.msb() : ir::Net(ir::S0));
+			ir::Net abit = i < a.size() ? ir::Net(a[i]) : (a_signed ? a.msb() : ir::Net(Trit::S0));
+			ir::Net bbit = i < b.size() ? ir::Net(b[i]) : (b_signed ? b.msb() : ir::Net(Trit::S0));
 
-			if (abit == ir::Sx || bbit == ir::Sx) {
+			if (abit == Trit::Sx || bbit == Trit::Sx) {
 				seen_undef_bit = true;
 				break;
 			}
@@ -292,15 +292,15 @@ ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, b
 				carry = ThreeValued::CARRY(al, ThreeValued::NOT(bl), carry);
 		}
 		if (seen_undef_bit) {
-			ir::Value ret(ir::Sx);
+			ir::Value ret{ir::Net(Trit::Sx)};
 			ret.extend_u0(y_width);
 			return ret;
 		}
 		int result = ThreeValued::XOR(carry, ThreeValued::XNOR(al, bl));
 		if (result < 0)
-			return ir::Value(ir::S0, y_width);
+			return ir::Net(Trit::S0).repeat(y_width);
 		if (result > 0) {
-			ir::Value ret(ir::S1);
+			ir::Value ret{ir::Net(Trit::S1)};
 			ret.extend_u0(y_width);
 			return ret;
 		}
@@ -308,13 +308,13 @@ ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, b
 
 	if (op == ast::BinaryOperator::LogicalAnd) {
 		if (a.is_fully_zero() || b.is_fully_zero())
-			return ir::Value(ir::S0, y_width);
+			return ir::Net(Trit::S0).repeat(y_width);
 	}
 
 	if (op == ast::BinaryOperator::LogicalOr) {
 		// IMPROVEMENT: condition could be relaxed
 		if ((a.is_fully_const() && a.as_bool()) || (b.is_fully_const() && b.as_bool())) {
-			ir::Value ret(ir::S1);
+			ir::Value ret{ir::Net(Trit::S1)};
 			ret.extend_u0(y_width);
 			return ret;
 		}
@@ -323,14 +323,14 @@ ir::Value GraphBuilder::Biop(ast::BinaryOperator op, ir::Value a, ir::Value b, b
 	uint64_t msb_zeroes = 0;
 	if (op == ast::BinaryOperator::Multiply && !a_signed && !b_signed) {
 		int as = a.size(), bs = b.size();
-		while (as > 0 && a[as - 1] == ir::S0)
+		while (as > 0 && a[as - 1] == Trit::S0)
 			as--;
-		while (bs > 0 && b[bs - 1] == ir::S0)
+		while (bs > 0 && b[bs - 1] == Trit::S0)
 			bs--;
 		msb_zeroes = std::max<int>(0, ((int)y_width) - (as + bs));
 	}
 
-	return {ir::Value(ir::S0, msb_zeroes),
+	return {ir::Net(Trit::S0).repeat(msb_zeroes),
 			backend->Biop(op, a, b, a_signed, b_signed, y_width - msb_zeroes)};
 }
 
@@ -344,7 +344,7 @@ ir::Value GraphBuilder::CountOnes(ir::Value sig, uint64_t result_width)
 	ir::Value ret;
 	auto width = sig.size();
 	if (width == 0) {
-		ret = ir::Const(0, 1);
+		ret = TritVector::from_uint64(0, 1);
 	} else if (width == 1) {
 		// Single bit
 		ret = sig;
@@ -384,7 +384,7 @@ ir::Value GraphBuilder::OneHot(ir::Value sig, uint64_t result_width)
 	ir::Value ret;
 	auto width = sig.size();
 	count = CountOnes(sig, width);
-	ret = Eq(count, ir::Const(1, width));
+	ret = Eq(count, TritVector::from_uint64(1, width));
 	ret.extend_u0(result_width);
 	return ret;
 }
@@ -395,7 +395,7 @@ ir::Value GraphBuilder::OneHot0(ir::Value sig, uint64_t result_width)
 	ir::Value ret;
 	auto width = sig.size();
 	count = CountOnes(sig, width);
-	ret = Le(count, ir::Const(1, width), false);
+	ret = Le(count, TritVector::from_uint64(1, width), false);
 	ret.extend_u0(result_width);
 	return ret;
 }
@@ -405,17 +405,18 @@ ir::Value GraphBuilder::Clog2(ir::Value sig, uint64_t result_width)
 	int width = sig.size();
 
 	if (width == 0)
-		return ir::Const(0, result_width);
+		return TritVector::from_uint64(0, result_width);
 
-	ir::Value n_minus_1 =
-			Biop(ast::BinaryOperator::Subtract, sig, ir::Const(1, width), false, false, width);
+	ir::Value n_minus_1 = Biop(ast::BinaryOperator::Subtract, sig,
+			TritVector::from_uint64(1, width), false, false, width);
 
-	ir::Value result = ir::Const(0, result_width);
+	ir::Value result = TritVector::from_uint64(0, result_width);
 	for (int i = 0; i < width; i++)
-		result = Mux(result, ir::Const(i + 1, result_width), n_minus_1[i]);
+		result = Mux(result, TritVector::from_uint64(static_cast<uint64_t>(i + 1), result_width),
+				n_minus_1[i]);
 
 	ir::Net n_not_zero = ReduceBool(sig);
-	return Mux(ir::Const(0, result_width), result, n_not_zero);
+	return Mux(TritVector::from_uint64(0, result_width), result, n_not_zero);
 }
 
 ir::Value GraphBuilder::add_placeholder_signal(
@@ -429,7 +430,7 @@ void GraphBuilder::connect(ir::Value target, ir::Value source)
 	backend->connect(target, source);
 }
 
-void GraphBuilder::set_initialization(ir::Value signal, ir::Const init_value)
+void GraphBuilder::set_initialization(ir::Value signal, TritVector init_value)
 {
 	backend->set_initialization(signal, init_value);
 }
@@ -465,7 +466,7 @@ void GraphBuilder::add_dff(std::string_view name, const ir::Net clk, const ir::V
 void GraphBuilder::add_dffe(std::string_view name, const ir::Net clk, const ir::Net en,
 		const ir::Value &d, const ir::Value &q, bool clk_polarity, bool en_polarity)
 {
-	if (en == ir::Net(en_polarity ? ir::S1 : ir::S0)) {
+	if (en == ir::Net(en_polarity ? Trit::S1 : Trit::S0)) {
 		backend->add_dff(name, clk, d, q, clk_polarity);
 		return;
 	}
@@ -484,7 +485,7 @@ void GraphBuilder::add_aldffe(std::string_view name, const ir::Net clk, const ir
 		const ir::Net aload, const ir::Value &d, const ir::Value &q, const ir::Value &ad,
 		bool clk_polarity, bool en_polarity, bool aload_polarity)
 {
-	if (en == ir::Net(en_polarity ? ir::S1 : ir::S0)) {
+	if (en == ir::Net(en_polarity ? Trit::S1 : Trit::S0)) {
 		return add_aldff(name, clk, aload, d, q, ad, clk_polarity, aload_polarity);
 	}
 

@@ -150,14 +150,14 @@ void finalize_variable_initialization(NetlistContext &netlist)
 		{
 			auto signal = netlist.convert_static(variable);
 			ir::Value cl, cr; // lhs/rhs of a new connection
-			ir::Const attr_value(ir::Sx, signal.size());
+			TritVector attr_value(Trit::Sx, signal.size());
 			for (uint64_t i = 0; i < signal.size(); i++) {
 				VariableBit vbit(variable, i);
 				bool register_driven = netlist.register_driven_variables.count(vbit);
 				bool driven = netlist.driven_variables.count(vbit);
 				// register_driven implies driven
 				assert_invariant(!register_driven || driven);
-				ir::Trit state = netlist.initial_state.at(vbit, ir::Sx);
+				Trit state = netlist.initial_state.at(vbit, Trit::Sx);
 				if (register_driven) {
 					attr_value.set(i, state);
 				} else {
