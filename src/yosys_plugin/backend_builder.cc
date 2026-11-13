@@ -35,7 +35,7 @@ std::string BackendGraphBuilder::new_id(std::string base)
 std::string BackendGraphBuilder::dedup_id(std::string name)
 {
 	std::string candidate = name;
-	while (canvas->count_id(RTLIL::IdString(candidate)) != 0)
+	while (canvas->count_id(lookup_id(canvas, candidate)) != 0)
 		candidate = name + "$" + std::to_string(next_id++);
 	return candidate;
 }
