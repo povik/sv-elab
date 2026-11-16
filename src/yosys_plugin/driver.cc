@@ -419,7 +419,7 @@ struct SlangFrontend : Frontend
 		log("\n");
 	}
 
-	std::optional<std::string> read_heredoc(std::vector<std::string> &args)
+	std::optional<std::string> read_heredoc(std::vector<std::string> &args, [[maybe_unused]] RTLIL::Design *design)
 	{
 		std::string eot;
 
@@ -438,11 +438,16 @@ struct SlangFrontend : Frontend
 			log_error("Missing EOT marker for reading a here-document\n");
 
 		std::string buffer;
-		bool in_script = current_script_file != nullptr;
+#if YOSYS_HAS_FRONTEND_CONTEXT
+		FILE *script_file = design->frontend_context->script_file;
+#else
+		FILE *script_file = current_script_file;
+#endif
+		bool in_script = script_file != nullptr;
 
 		while (true) {
 			char line[4096];
-			if (!fgets(line, sizeof(line), in_script ? current_script_file : stdin))
+			if (!fgets(line, sizeof(line), in_script ? script_file : stdin))
 				log_error("Unexpected EOF reading a here-document\n");
 
 			const char *p = line;
@@ -529,7 +534,7 @@ struct SlangFrontend : Frontend
 		driver.diagEngine.addClient(client);
 #endif
 		{
-			if (auto heredoc = read_heredoc(args)) {
+			if (auto heredoc = read_heredoc(args, design)) {
 				auto buffer = driver.sourceManager.assignText(
 						"<inlined>", std::string_view{heredoc.value()});
 				driver.sourceLoader.addBuffer(buffer);
