@@ -675,4 +675,8 @@ void GraphBuilder::add_dffsre(std::string_view name, const ir::Net clk, const ir
 			set_over_clear);
 }
 
+GraphBuilder::~GraphBuilder()
+{
+}
+
 }; // namespace slang_frontend

@@ -708,6 +708,7 @@ struct BackendGraphBuilder;
 
 struct GraphBuilder {
 	std::unique_ptr<BackendGraphBuilder> backend;
+	~GraphBuilder();
 
 	ir::Value Demux(ir::Value a, ir::Value s);
 	ir::Value Bwmux(ir::Value a, ir::Value b, ir::Value s);
