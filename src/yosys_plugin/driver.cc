@@ -88,12 +88,41 @@ template <typename T> std::string format_src(const slang::SourceManager *sm, con
 	return format_src(sm, source_location(obj));
 }
 
-RTLIL::Const make_src(NetlistContext &netlist, slang::SourceRange source_range)
+#if __has_include("kernel/srcpool.h")
+static Yosys::IdString src_location(Yosys::SrcPool &srcs, const slang::SourceManager *sm, slang::SourceRange sr)
 {
-	return RTLIL::Const(format_src(netlist.compilation.getSourceManager(), source_range));
+	Yosys::IdString file = srcs.file(sm->getFileName(sr.start()));
+	if (sr.start() == sr.end())
+		return srcs.location(file, (int)sm->getLineNumber(sr.start()), (int)sm->getColumnNumber(sr.start()));
+	return srcs.location(file, (int)sm->getLineNumber(sr.start()), (int)sm->getColumnNumber(sr.start()),
+			(int)sm->getLineNumber(sr.end()), (int)sm->getColumnNumber(sr.end()));
 }
 
-RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
+SrcHandle make_src(RTLIL::Module *owner, const slang::SourceManager *sm, slang::SourceRange source_range)
+{
+	if (!sm->isFileLoc(source_range.start()) || !sm->isFileLoc(source_range.end()))
+		return SrcHandle();
+	Yosys::SrcPool &srcs = owner->srcs();
+	return srcs.add(src_location(srcs, sm, source_range));
+}
+
+SrcHandle make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
+{
+	const slang::SourceManager *sm = netlist.compilation.getSourceManager();
+	Yosys::SrcPool &srcs = netlist.backend->canvas->srcs();
+	std::vector<Yosys::IdString> members = {};
+	for (auto loc : locs)
+		if (sm->isFileLoc(loc))
+			members.push_back(src_location(srcs, sm, slang::SourceRange(loc, loc)));
+	return srcs.add(members);
+}
+#else
+SrcHandle make_src(RTLIL::Module *owner, const slang::SourceManager *sm, slang::SourceRange source_range)
+{
+	return make_src(owner, format_src(sm, source_range));
+}
+
+SrcHandle make_src(NetlistContext &netlist, const std::vector<slang::SourceLocation> &locs)
 {
 	std::string joined;
 	for (auto loc : locs) {
@@ -104,7 +133,13 @@ RTLIL::Const make_src(NetlistContext &netlist, const std::vector<slang::SourceLo
 			joined += '|';
 		joined += src;
 	}
-	return RTLIL::Const(joined);
+	return make_src(netlist.backend->canvas, joined);
+}
+#endif
+
+SrcHandle make_src(NetlistContext &netlist, slang::SourceRange source_range)
+{
+	return make_src(netlist.backend->canvas, netlist.compilation.getSourceManager(), source_range);
 }
 
 static std::string rtlil_id(const std::string_view &view)
@@ -206,15 +241,24 @@ std::optional<RTLIL::Const> convert_attr_value(
 
 template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTLIL::AttrObject *to)
 {
-	auto src = format_src(netlist.compilation.getSourceManager(), from);
-	if (!src.empty())
-		to->attributes[ID::src] = src;
+	std::optional<std::string> src_attr;
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
+			if (attr->name == "src") {
+				if (!(value->flags & RTLIL::CONST_FLAG_STRING))
+					netlist.add_diag(diag::SrcAttributeNotString, attr->location);
+				src_attr = value->decode_string();
+			}
+			else
+				to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
 		}
 	}
+
+	if (src_attr)
+		assign_src(to, make_src(netlist.backend->canvas, *src_attr));
+	else
+		assign_src(to, make_src(netlist.backend->canvas, netlist.compilation.getSourceManager(), source_location(from)));
 }
 template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, AttributeGuard &guard)
 {
@@ -222,7 +266,13 @@ template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, Att
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
 		if (auto value = convert_attr_value(netlist, attr)) {
-			guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
+			if (attr->name == "src") {
+				if (!(value->flags & RTLIL::CONST_FLAG_STRING))
+					netlist.add_diag(diag::SrcAttributeNotString, attr->location);
+				guard.set_src(value->decode_string());
+			}
+			else
+				guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
 		}
 	}
 }

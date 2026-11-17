@@ -103,10 +103,10 @@ struct Case
 			// opportunistic optimization to reduce tree depth: helps runtime of proc_prune
 			while (it != ite && it + 1 == ite && (*it)->trivial() && !(*it)->cases[0]->statement) {
 				if (!(*it)->cases[0]->aux_actions.empty()) {
-					RTLIL::SwitchRule *sw = new RTLIL::SwitchRule;
+					RTLIL::SwitchRule *sw = new RTLIL::SwitchRule(rule->module);
 					rule->switches.push_back(sw);
 					sw->signal = {};
-					RTLIL::CaseRule *case2 = new RTLIL::CaseRule;
+					RTLIL::CaseRule *case2 = new RTLIL::CaseRule(rule->module);
 					sw->cases.push_back(case2);
 					case2->actions = (*it)->cases[0]->aux_actions;
 				}
@@ -119,12 +119,7 @@ struct Case
 		}
 	}
 
-	RTLIL::CaseRule *lower(NetlistContext &netlist)
-	{
-		RTLIL::CaseRule *ret = new RTLIL::CaseRule;
-		copy_into(netlist, ret);
-		return ret;
-	}
+	RTLIL::CaseRule *lower(NetlistContext &netlist);
 
 	void insert_latch_signaling(
 			NetlistContext &netlist, hashlib::dict<VariableBit, RTLIL::SigSig> &map)
@@ -135,7 +130,7 @@ struct Case
 		for (auto &action : actions) {
 			VariableBits lvalue;
 			ir::Value enables, lstaging, rvalue;
-			RTLIL::Const src = make_src(netlist, {action.loc});
+			SrcHandle src = make_src(netlist, {action.loc});
 
 			for (uint64_t i = 0; i < action.lvalue.bitwidth(); i++) {
 				VariableBit lbit = action.lvalue[i];

@@ -99,6 +99,7 @@ extern slang::DiagCode SpecifyRuleUnsupported;
 extern slang::DiagCode SpecifyRuleArgumentsUnsupported;
 extern slang::DiagCode SpecifyRuleMissingArgument;
 extern slang::DiagCode SpecifyRuleEdgeUnsupported;
+extern slang::DiagCode SrcAttributeNotString;
 
 void setup_messages(slang::DiagnosticEngine &engine);
 }; // namespace diag

@@ -5,6 +5,7 @@
 // Distributed under the terms of the ISC license, see LICENSE
 //
 #include "cases.h"
+#include "backend_builder.h"
 #include "diag.h"
 #include "slang_frontend.h"
 
@@ -38,9 +39,16 @@ RTLIL::SigSpec lower_pattern(const ValuePattern &pat)
 	return RTLIL::SigSpec(bits);
 }
 
+RTLIL::CaseRule *Case::lower(NetlistContext &netlist)
+{
+	RTLIL::CaseRule *ret = new RTLIL::CaseRule(netlist.backend->canvas);
+	copy_into(netlist, ret);
+	return ret;
+}
+
 RTLIL::SwitchRule *Switch::lower(NetlistContext &netlist)
 {
-	RTLIL::SwitchRule *rule = new RTLIL::SwitchRule;
+	RTLIL::SwitchRule *rule = new RTLIL::SwitchRule(netlist.backend->canvas);
 	rule->signal = signal;
 	assign_signal_src(rule, make_src(netlist, signal_range));
 

@@ -147,6 +147,7 @@ DiagCode SpecifyRuleUnsupported(DiagSubsystem::Netlist, 1094);
 DiagCode SpecifyRuleArgumentsUnsupported(DiagSubsystem::Netlist, 1095);
 DiagCode SpecifyRuleMissingArgument(DiagSubsystem::Netlist, 1096);
 DiagCode SpecifyRuleEdgeUnsupported(DiagSubsystem::Netlist, 1097);
+DiagCode SrcAttributeNotString(DiagSubsystem::Netlist, 1098);
 
 DiagGroup unsynthesizable("unsynthesizable",
 		{IffUnsupported, GenericTimingUnsyn, BothEdgesUnsupported, ExpectingIfElseAload,
@@ -405,6 +406,9 @@ void setup_messages(slang::DiagnosticEngine &engine)
 	
 	engine.setMessage(SpecifyRuleEdgeUnsupported, "unsupported edge for specify rule '{}'");
 	engine.setSeverity(SpecifyRuleEdgeUnsupported, DiagnosticSeverity::Error);
+
+	engine.setMessage(SrcAttributeNotString, "attribute 'src' must be a string");
+	engine.setSeverity(SrcAttributeNotString, DiagnosticSeverity::Error);
 	// clang-format on
 }
 }; // namespace diag
