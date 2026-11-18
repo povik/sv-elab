@@ -2644,7 +2644,8 @@ public:
 			auto [submodule, inserted] = queue.get_or_emplace(ref_body, netlist, *ref_body->parentInstance);
 
 #ifndef SLANG_NO_YOSYS
-			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), RTLIL::escape_id(module_type_id(*ref_body)));
+			RTLIL::IdString submodule_type = submodule.backend->canvas->name;
+			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), submodule_type);
 			cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
 			for (auto *conn : sym.getPortConnections()) {
 				slang::SourceLocation loc;
