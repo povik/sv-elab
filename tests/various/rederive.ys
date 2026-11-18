@@ -1,0 +1,41 @@
+log -header Rederive a constant output with chparam
+log -push
+read_slang --top top rederive.sv
+sat -verify -prove y 0 top
+chparam -set VALUE 1 top
+sat -verify -prove y 1 top
+log -pop
+
+design -reset
+log -header Rederive a constant output with hierarchy
+log -push
+read_slang --top top rederive.sv
+sat -verify -prove y 0 top
+hierarchy -check -top top -chparam VALUE 1
+sat -verify -prove y 1 top
+log -pop
+
+design -reset
+log -header Rederive a module with an interface connection
+log -push
+read_slang --top interfaces --keep-hierarchy rederive.sv
+design -push-copy
+flatten interfaces
+sat -verify -set data 0 -prove result 0 interfaces
+design -pop
+chparam -set INVERT 1 interfaces
+hierarchy -check -top interfaces
+flatten
+check -assert
+sat -verify -set data 0 -prove result 1 interfaces
+log -pop
+
+design -reset
+log -header Rederive the first module after a second read
+log -push
+read_slang --top top rederive.sv
+read_slang --top interfaces --keep-hierarchy rederive.sv
+sat -verify -prove y 0 top
+chparam -set VALUE 1 top
+sat -verify -prove y 1 top
+log -pop
