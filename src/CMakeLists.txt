@@ -21,6 +21,8 @@ add_library(yosys-slang ${LIBRARY_TYPE}
     yosys_plugin/driver.h
     yosys_plugin/ir.cc
     yosys_plugin/ir.h
+    yosys_plugin/slang_module.cc
+    yosys_plugin/slang_module.h
     yosys_plugin/sva.cc
     addressing.cc
     async_pattern.cc

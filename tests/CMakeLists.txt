@@ -73,6 +73,7 @@ set(ALL_TESTS
     various/readmem.ys
     various/readmem_diag.ys
     various/recursion_diag.ys
+    various/rederive.ys
     various/regress.ys
     various/specify.ys
     various/stringattrs.ys

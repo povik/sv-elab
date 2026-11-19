@@ -40,6 +40,8 @@
 #include "diag.h"
 #include "slang_frontend.h"
 #include "version.h"
+#include "slang_module.h"
+#include <memory>
 
 namespace slang_frontend {
 
@@ -358,6 +360,31 @@ public:
 #endif
 // clang-format off
 
+// There are three cases handled by this function:
+// 1. Normal mode; no expected diagnostics. Return `false` to continue executing.
+// 2. Test mode; expected diagnostic found. Return `true` to exit early with success.
+// 3a. Test mode; expected diagnostic not found but more could appear later. Return `false`.
+// 3b. Test mode; expected diagnostic not found. Use `log_error()` to exit early with failure.
+bool check_diagnostics(slang::DiagnosticEngine &diagEngine,
+		const slang::SmallVector<slang::Diagnostic> &diags, bool last)
+{
+	if (expected_diagnostic.empty())
+		return false;
+
+	for (auto &diag : diags) {
+		auto message = diagEngine.formatMessage(diag);
+		if (message == expected_diagnostic) {
+			log("Expected diagnostic `%s' found\n", expected_diagnostic.c_str());
+			expected_diagnostic.clear();
+			return true;
+		}
+	}
+	if (last)
+		log_error("Expected diagnostic `%s' but none emitted\n", expected_diagnostic.c_str());
+	else
+		return false;
+}
+
 struct SlangFrontend : Frontend
 {
 	SlangFrontend() : Frontend("slang", "read SystemVerilog (slang)") {}
@@ -459,31 +486,6 @@ struct SlangFrontend : Frontend
 		return buffer;
 	}
 
-	// There are three cases handled by this function:
-	// 1. Normal mode; no expected diagnostics. Return `false` to continue executing.
-	// 2. Test mode; expected diagnostic found. Return `true` to exit early with success.
-	// 3a. Test mode; expected diagnostic not found but more could appear later. Return `false`.
-	// 3b. Test mode; expected diagnostic not found. Use `log_error()` to exit early with failure.
-	bool check_diagnostics(slang::DiagnosticEngine &diagEngine,
-			const slang::SmallVector<slang::Diagnostic> &diags, bool last)
-	{
-		if (expected_diagnostic.empty())
-			return false;
-
-		for (auto &diag : diags) {
-			auto message = diagEngine.formatMessage(diag);
-			if (message == expected_diagnostic) {
-				log("Expected diagnostic `%s' found\n", expected_diagnostic.c_str());
-				expected_diagnostic.clear();
-				return true;
-			}
-		}
-		if (last)
-			log_error("Expected diagnostic `%s' but none emitted\n", expected_diagnostic.c_str());
-		else
-			return false;
-	}
-
 	void execute(std::istream *&f, std::string filename, std::vector<std::string> args,
 			RTLIL::Design *design) override
 	{
@@ -493,9 +495,10 @@ struct SlangFrontend : Frontend
 
 		auto guard = slang::OS::captureOutput(
 				[&](std::string_view text, bool) { log("%s", std::string(text).c_str()); });
-		// names of RTLIL modules added in this invocation; does not include blackboxes
-		std::vector<RTLIL::IdString> emitted_module_names;
-		slang::driver::Driver driver;
+		ElabConfig cfg{};
+		cfg.driver = std::make_shared<slang::driver::Driver>();
+		cfg.settings = std::make_shared<SynthesisSettings>();
+		slang::driver::Driver& driver = *cfg.driver;
 		driver.addStandardArgs();
 #if YOSYS_HAS_TARGET_REGISTER
 		std::string synth_target;
@@ -520,7 +523,7 @@ struct SlangFrontend : Frontend
 			"Specify architecture target family (optional)",
 			"<family-name>");
 #endif
-		SynthesisSettings settings;
+		SynthesisSettings& settings = *cfg.settings;
 		settings.addOptions(driver.cmdLine);
 		diag::setup_messages(driver.diagEngine);
 #if YOSYS_NEW_LOGGING
@@ -585,119 +588,143 @@ struct SlangFrontend : Frontend
 			if (!driver.parseAllSources())
 				log_cmd_error("Parsing failed; see full log for details\n");
 
-			auto compilation = driver.createCompilation();
+			elaborate(design, std::nullopt, cfg);
 
-			if (settings.extern_modules.value_or(true))
-				import_blackboxes_from_rtlil(driver.sourceManager, *compilation, design);
-
-			if (settings.dump_ast.value_or(false)) {
-				slang::JsonWriter writer;
-				writer.setPrettyPrint(true);
-				ast::ASTSerializer serializer(*compilation, writer);
-				serializer.serialize(compilation->getRoot());
-				std::cout << writer.view() << std::endl;
-			}
-
-			bool in_succesful_failtest = false;
-
-			driver.reportCompilation(*compilation, /* quiet */ false);
-			if (check_diagnostics(
-						driver.diagEngine, compilation->getAllDiagnostics(), /*last=*/false))
-				in_succesful_failtest = true;
-
-			if (driver.diagEngine.getNumErrors()) {
-				// Stop here should there have been any errors from AST compilation,
-				// PopulateNetlist requires a well-formed AST without error nodes
-				(void)driver.reportDiagnostics(/* quiet */ false);
-				if (!in_succesful_failtest)
-					log_cmd_error("Design elaboration failed; see full log for details\n");
-				return;
-			}
-
-			if (settings.ast_compilation_only.value_or(false)) {
-				(void)driver.reportDiagnostics(/* quiet */ false);
-				return;
-			}
-
-			global_compilation = &*compilation;
-			HierarchyQueue hqueue;
-			for (auto instance : compilation->getRoot().topInstances) {
-				if (instance->getDefinition().definitionKind == ast::DefinitionKind::Program) {
-					slang::Diagnostic program_diag(diag::ProgramUnsupported, instance->location);
-					driver.diagEngine.issue(program_diag);
-					continue;
-				}
-
-				auto ref_body = &get_instance_body(settings, *instance);
-				log_assert(ref_body->parentInstance);
-
-				auto backend = std::make_unique<BackendGraphBuilder>();
-				backend->canvas = design->addModule(RTLIL::escape_id(module_type_id(*ref_body)));
-				backend->source_mgr = compilation->getSourceManager();
-				auto [netlist, new_] = hqueue.get_or_emplace(ref_body, std::move(backend), settings,
-						*compilation, *ref_body->parentInstance);
-				log_assert(new_);
-				netlist.backend->canvas->attributes[ID::top] = 1;
-			}
-
-			for (int i = 0; i < (int)hqueue.queue.size(); i++) {
-				NetlistContext &netlist = *hqueue.queue[i];
-				emitted_module_names.push_back(netlist.backend->canvas->name);
-
-				populate_netlist(hqueue, netlist);
-
-				slang::Diagnostics diags;
-				diags.append_range(netlist.issued_diagnostics);
-				diags.sort(driver.sourceManager);
-
-				if (check_diagnostics(driver.diagEngine, diags, /*last=*/false))
-					in_succesful_failtest = true;
-
-				for (int i = 0; i < (int)diags.size(); i++) {
-					if (i > 0 && diags[i] == diags[i - 1])
-						continue;
-					driver.diagEngine.issue(diags[i]);
-				}
-			}
-
-			if (check_diagnostics(driver.diagEngine, {}, /*last=*/true))
-				in_succesful_failtest = true;
-
-			if (!driver.reportDiagnostics(/* quiet */ false)) {
-				if (!in_succesful_failtest)
-					log_cmd_error("Design elaboration failed; see full log for details\n");
-				return;
-			}
 		} catch (const std::exception &e) {
 			log_error("Exception: %s\n", e.what());
 		}
-
-		if (!settings.no_proc.value_or(false)) {
-			// Hack to get an empty selection in a way compatible with both pre and post Yosys v0.52
-			// Front of the selection stack should be a "full selection" at any time, and we can
-			// amend it.
-			RTLIL::Selection emitted_modules = design->selection_stack.front();
-			emitted_modules.full_selection = false;
-			for (auto name : emitted_module_names)
-				emitted_modules.selected_modules.insert(name);
-
-			design->selection_stack.push_back(emitted_modules);
-
-			log_push();
-			call(design, "proc_clean");
-			call(design, "proc_rmdead");
-			call(design, "proc_prune");
-			call(design, "proc_init");
-			call(design, "proc_rom");
-			call(design, "proc_mux");
-			call(design, "proc_clean");
-			call(design, "opt_expr -keepdc");
-			log_pop();
-
-			design->selection_stack.pop_back();
-		}
 	}
 } SlangFrontend;
+
+
+void elaborate(RTLIL::Design *design, std::optional<ModuleRename> names, ElabConfig& cfg) {
+	std::vector<RTLIL::IdString> emitted_module_names;
+	slang::driver::Driver& driver = *cfg.driver;
+	SynthesisSettings& settings = *cfg.settings;
+
+	try {
+		if (names)
+			driver.options.topModules = {unescaped_id(design, names->original)};
+
+		auto compilation = driver.createCompilation();
+
+		if (settings.extern_modules.value_or(true))
+			import_blackboxes_from_rtlil(driver.sourceManager, *compilation, design);
+
+		if (settings.dump_ast.value_or(false)) {
+			slang::JsonWriter writer;
+			writer.setPrettyPrint(true);
+			ast::ASTSerializer serializer(*compilation, writer);
+			serializer.serialize(compilation->getRoot());
+			std::cout << writer.view() << std::endl;
+		}
+
+		bool in_succesful_failtest = false;
+
+		driver.reportCompilation(*compilation, /* quiet */ false);
+		if (check_diagnostics(
+					driver.diagEngine, compilation->getAllDiagnostics(), /*last=*/false))
+			in_succesful_failtest = true;
+
+		if (driver.diagEngine.getNumErrors()) {
+			// Stop here should there have been any errors from AST compilation,
+			// PopulateNetlist requires a well-formed AST without error nodes
+			(void)driver.reportDiagnostics(/* quiet */ false);
+			if (!in_succesful_failtest)
+				log_cmd_error("Design elaboration failed; see full log for details\n");
+			return;
+		}
+
+		if (settings.ast_compilation_only.value_or(false)) {
+			(void)driver.reportDiagnostics(/* quiet */ false);
+			return;
+		}
+
+		global_compilation = &*compilation;
+		HierarchyQueue hqueue;
+		for (auto instance : compilation->getRoot().topInstances) {
+			if (instance->getDefinition().definitionKind == ast::DefinitionKind::Program) {
+				slang::Diagnostic program_diag(diag::ProgramUnsupported, instance->location);
+				driver.diagEngine.issue(program_diag);
+				continue;
+			}
+
+			auto ref_body = &get_instance_body(settings, *instance);
+			log_assert(ref_body->parentInstance);
+			std::string name = RTLIL::escape_id(module_type_id(*ref_body));
+
+
+			auto backend = std::make_unique<BackendGraphBuilder>();
+			SlangModule* module = new SlangModule(design);
+			module->name = names ? names->emitted : intern_id(design, name);
+			module->settings = cfg;
+			design->add(module);
+
+			backend->canvas = module;
+			backend->source_mgr = compilation->getSourceManager();
+			auto [netlist, new_] = hqueue.get_or_emplace(ref_body, std::move(backend), settings,
+					*compilation, *ref_body->parentInstance);
+			log_assert(new_);
+			netlist.backend->canvas->attributes[ID::top] = 1;
+		}
+
+		for (int i = 0; i < (int)hqueue.queue.size(); i++) {
+			NetlistContext &netlist = *hqueue.queue[i];
+			emitted_module_names.push_back(netlist.backend->canvas->name);
+
+			populate_netlist(hqueue, netlist);
+
+			slang::Diagnostics diags;
+			diags.append_range(netlist.issued_diagnostics);
+			diags.sort(driver.sourceManager);
+
+			if (check_diagnostics(driver.diagEngine, diags, /*last=*/false))
+				in_succesful_failtest = true;
+
+			for (int i = 0; i < (int)diags.size(); i++) {
+				if (i > 0 && diags[i] == diags[i - 1])
+					continue;
+				driver.diagEngine.issue(diags[i]);
+			}
+		}
+
+		if (check_diagnostics(driver.diagEngine, {}, /*last=*/true))
+			in_succesful_failtest = true;
+
+		if (!driver.reportDiagnostics(/* quiet */ false)) {
+			if (!in_succesful_failtest)
+				log_cmd_error("Design elaboration failed; see full log for details\n");
+			return;
+		}
+	} catch (const std::exception &e) {
+		log_error("Exception: %s\n", e.what());
+	}
+
+	if (!settings.no_proc.value_or(false)) {
+		// Hack to get an empty selection in a way compatible with both pre and post Yosys v0.52
+		// Front of the selection stack should be a "full selection" at any time, and we can
+		// amend it.
+		RTLIL::Selection emitted_modules = design->selection_stack.front();
+		emitted_modules.full_selection = false;
+		for (auto name : emitted_module_names)
+			emitted_modules.selected_modules.insert(name);
+
+		design->selection_stack.push_back(emitted_modules);
+
+		log_push();
+		Pass::call(design, "proc_clean");
+		Pass::call(design, "proc_rmdead");
+		Pass::call(design, "proc_prune");
+		Pass::call(design, "proc_init");
+		Pass::call(design, "proc_rom");
+		Pass::call(design, "proc_mux");
+		Pass::call(design, "proc_clean");
+		Pass::call(design, "opt_expr -keepdc");
+		log_pop();
+
+		design->selection_stack.pop_back();
+	}
+}
 
 struct SlangDefaultsPass : Pass
 {
