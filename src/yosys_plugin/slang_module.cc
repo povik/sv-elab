@@ -6,6 +6,12 @@
 
 namespace Yosys {
 
+SlangModule::SlangModule([[maybe_unused]] RTLIL::Design *design)
+#if YOSYS_TWINES
+	: RTLIL::Module(design)
+#endif
+{}
+
 // create a new parametric module (when needed) and return the name of the generated module - without support for interfaces
 RTLIL::IdString SlangModule::derive(RTLIL::Design *design, const dict<RTLIL::IdString, RTLIL::Const> &parameters, bool /*mayfail*/)
 {

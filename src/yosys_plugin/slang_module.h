@@ -9,7 +9,7 @@
 namespace Yosys {
 
 	struct SlangModule : Yosys::RTLIL::Module {
-		using RTLIL::Module::Module;
+		explicit SlangModule(RTLIL::Design *design);
 
 		slang_frontend::ElabConfig settings;
 
