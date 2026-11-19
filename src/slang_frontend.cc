@@ -230,6 +230,15 @@ const std::string module_type_id(const ast::InstanceBodySymbol &sym)
         const auto *param = entry->symbol.as_if<ast::ParameterSymbol>();
         if (!param || !param->getSyntax())
             continue;
+        
+        bool overridden = param->isOverridden();
+        bool hierarchy_override = false;
+        if (auto node = sym.hierarchyOverrideNode) {
+            hierarchy_override = node->paramOverrides.contains(param->getSyntax());   
+        }
+        
+        if (!overridden && !hierarchy_override)
+            continue;
 
         const auto &value = param->getValue();
         if (!value.bad()) {
