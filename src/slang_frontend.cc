@@ -220,10 +220,23 @@ const std::string module_type_id(const ast::InstanceBodySymbol &sym)
 {
 	ast_invariant(sym, sym.parentInstance && sym.parentInstance->isModule());
 	std::string instance = sym.getHierarchicalPath();
-	if (instance == sym.name)
-		return std::string(sym.name);
-	else
-		return std::string(sym.name) + "$" + instance;
+	std::string name;
+	if (instance == sym.name) 
+		name = std::string(sym.name);
+	else 
+		name = std::string(sym.name) + "$" + instance;	
+	
+ 	for (const auto *entry : sym.getParameters()) {
+        const auto *param = entry->symbol.as_if<ast::ParameterSymbol>();
+        if (!param || !param->getSyntax())
+            continue;
+
+        const auto &value = param->getValue();
+        if (!value.bad()) {
+            name += std::string(param->name) + "=" + value.toString();
+        }
+    }
+	return name;
 }
 
 TritVector NetlistContext::convert_svint(const slang::SVInt &svint,
