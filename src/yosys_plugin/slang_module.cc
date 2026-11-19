@@ -48,6 +48,7 @@ RTLIL::Module *SlangModule::clone() const
 	return new_mod;
 }
 
+#if YOSYS_TWINES
 RTLIL::Module *SlangModule::clone(RTLIL::Design *dst) const
 {
 	return clone(dst, dst->twines().copy_from(design->twines(), name));
@@ -63,6 +64,7 @@ RTLIL::Module *SlangModule::clone(RTLIL::Design *dst, IdString target_name) cons
 
 	return new_mod;
 }
+#endif
 
 void SlangModule::copy_config_into(SlangModule *new_mod) const
 {
