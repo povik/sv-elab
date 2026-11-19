@@ -719,10 +719,7 @@ void elaborate(RTLIL::Design *design, std::optional<ModuleRename> names, ElabCon
 		Pass::call(design, "proc_rom");
 		Pass::call(design, "proc_mux");
 		Pass::call(design, "proc_clean");
-		Pass::call(design, "opt_clean");
-		Pass::call(design, "opt_dff");
 		Pass::call(design, "opt_expr -keepdc");
-		Pass::call(design, "wreduce");
 		log_pop();
 
 		design->selection_stack.pop_back();
