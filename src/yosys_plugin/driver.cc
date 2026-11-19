@@ -604,9 +604,7 @@ void elaborate(RTLIL::Design *design, std::optional<ModuleRename> names, ElabCon
 
 	try {
 		if (names)
-		    driver.options.topModules = {
-		        design->twines().unescaped_str(names->original)
-		    };
+			driver.options.topModules = {unescaped_id(design, names->original)};
 
 		auto compilation = driver.createCompilation();
 
@@ -658,7 +656,7 @@ void elaborate(RTLIL::Design *design, std::optional<ModuleRename> names, ElabCon
 
 			auto backend = std::make_unique<BackendGraphBuilder>();
 			SlangModule* module = new SlangModule(design);
-			module->name = names ? names->emitted : design->twines().add(name);
+			module->name = names ? names->emitted : intern_id(design, name);
 			module->settings = cfg;
 			design->add(module);
 

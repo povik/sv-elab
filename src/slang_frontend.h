@@ -113,6 +113,11 @@ template <typename T> IdString lookup_id(T *owner, std::string_view name)
 {
 	return owner->twines().find(name);
 }
+
+inline std::string unescaped_id(const RTLIL::Design *design, IdString id)
+{
+	return design->twines().unescaped_str(id);
+}
 #else
 template <typename T> IdString intern_id(T *, std::string_view name)
 {
@@ -122,6 +127,11 @@ template <typename T> IdString intern_id(T *, std::string_view name)
 template <typename T> IdString lookup_id(T *, std::string_view name)
 {
 	return std::string(name);
+}
+
+inline std::string unescaped_id(const RTLIL::Design *, IdString id)
+{
+	return RTLIL::unescape_id(id);
 }
 #endif
 

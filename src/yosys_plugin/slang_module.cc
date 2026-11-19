@@ -12,7 +12,7 @@ RTLIL::IdString SlangModule::derive(RTLIL::Design *design, const dict<RTLIL::IdS
 	std::vector<std::string> overrides;
 
 	for (const auto &[key, value] : parameters) {
-	    std::string name = design->twines().unescaped_str(key);
+		std::string name = slang_frontend::unescaped_id(design, key);
 		std::string literal = convert_const_slang(value).toString(slang::SVInt::MAX_BITS, true);
 		overrides.push_back(name + "=" + literal);
 	}
@@ -20,7 +20,7 @@ RTLIL::IdString SlangModule::derive(RTLIL::Design *design, const dict<RTLIL::IdS
 	IdString original_name = this->name;
 	IdString modname = original_name;
 	if (parameters.size())
-		modname = design->twines().add(compute_module_name(this->name, overrides));
+		modname = slang_frontend::intern_id(design, compute_module_name(this->name.str(), overrides));
 
 	if (design->has(modname))
 		return modname;
@@ -118,13 +118,6 @@ const slang::ConstantValue convert_const_slang(const RTLIL::Const &constval) {
 	return slang::ConstantValue(slang::SVInt::fromDigits(constval.size(),
 			slang::LiteralBase::Binary, constval.flags & RTLIL::CONST_FLAG_SIGNED,
 			any_unknown, digits));
-}
-
-SlangModule* add_module(RTLIL::Design* design, std::string name) {
-	auto *module = new SlangModule(design);
-	module->name = design->twines().add(name);
-	design->add(module);
-	return module;
 }
 
 } // namespace Yosys

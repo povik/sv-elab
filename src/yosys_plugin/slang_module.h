@@ -22,6 +22,5 @@ namespace Yosys {
 	};
 
 	std::string compute_module_name(std::string name, std::vector<std::string> params);
-	SlangModule* add_module(RTLIL::Design* design, std::string name);
 	const slang::ConstantValue convert_const_slang(const RTLIL::Const &constval);
 }
