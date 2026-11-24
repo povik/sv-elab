@@ -10,6 +10,8 @@ Visit [the Feature Support wiki page](https://github.com/povik/sv-elab/wiki/Feat
 
 sv-elab is a component of:
 
+ * [Grounding toolkit](https://github.com/EratDemo/Grounding) for RTL model reasoning in Lean.
+
  * [OpenROAD integrated synthesis tool](https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/src/syn)
 
  * [Yosys](https://github.com/YosysHQ/yosys) starting with v0.67; some older versions can use sv-elab as a plugin. Such a plugin is available prebuilt as part of
