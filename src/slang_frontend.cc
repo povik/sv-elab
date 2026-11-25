@@ -220,10 +220,32 @@ const std::string module_type_id(const ast::InstanceBodySymbol &sym)
 {
 	ast_invariant(sym, sym.parentInstance && sym.parentInstance->isModule());
 	std::string instance = sym.getHierarchicalPath();
-	if (instance == sym.name)
-		return std::string(sym.name);
-	else
-		return std::string(sym.name) + "$" + instance;
+	std::string name;
+	if (instance == sym.name) 
+		name = std::string(sym.name);
+	else 
+		name = std::string(sym.name) + "$" + instance;	
+	
+ 	for (const auto *entry : sym.getParameters()) {
+        const auto *param = entry->symbol.as_if<ast::ParameterSymbol>();
+        if (!param || !param->getSyntax())
+            continue;
+        
+        bool overridden = param->isOverridden();
+        bool hierarchy_override = false;
+        if (auto node = sym.hierarchyOverrideNode) {
+            hierarchy_override = node->paramOverrides.contains(param->getSyntax());   
+        }
+        
+        if (!overridden && !hierarchy_override)
+            continue;
+
+        const auto &value = param->getValue();
+        if (!value.bad()) {
+            name += std::string(param->name) + "=" + value.toString();
+        }
+    }
+	return name;
 }
 
 TritVector NetlistContext::convert_svint(const slang::SVInt &svint,
@@ -2644,7 +2666,8 @@ public:
 			auto [submodule, inserted] = queue.get_or_emplace(ref_body, netlist, *ref_body->parentInstance);
 
 #ifndef SLANG_NO_YOSYS
-			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), RTLIL::escape_id(module_type_id(*ref_body)));
+			RTLIL::IdString submodule_type = submodule.backend->canvas->name;
+			RTLIL::Cell *cell = netlist.backend->canvas->addCell(netlist.id(sym), submodule_type);
 			cell->set_string_attribute(ID::hdlname, netlist.hdlname(sym));
 			for (auto *conn : sym.getPortConnections()) {
 				slang::SourceLocation loc;

@@ -613,7 +613,11 @@ std::unique_ptr<BackendGraphBuilder> BackendGraphBuilder::start_new_graph(
 {
 	auto backend2 = std::make_unique<BackendGraphBuilder>();
 	backend2->source_mgr = source_mgr;
-	backend2->canvas = canvas->design->addModule(RTLIL::escape_id(std::string(graph_name)));
+	std::string base_name = RTLIL::escape_id(std::string(graph_name));
+	std::string name = base_name;
+	for (int i = 1; canvas->design->has(name); i++)
+		name = base_name + "$" + std::to_string(i);
+	backend2->canvas = canvas->design->addModule(name);
 	return backend2;
 }
 
