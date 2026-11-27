@@ -1696,6 +1696,9 @@ ir::Value EvalContext::operator()(ast::Expression const &expr)
 				} else if (name == "$readmemb" || name == "$readmemh") {
 					require(expr, !(call.arguments().size() < 2 || call.arguments().size() > 4));
 					handle_readmem(*procedural, call);
+				} else if (procedural && (name == "$finish" || name == "$stop")) {
+					// simulation control: no hardware meaning, ignored (as other
+					// synthesis tools do)
 				} else {
 					auto &d = netlist.add_diag(diag::UnsupportedSystemTask, expr.sourceRange);
 					d << name;

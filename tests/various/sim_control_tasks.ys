@@ -1,0 +1,16 @@
+# $finish/$stop in procedural code are simulation control: ignored for synthesis
+read_slang <<EOF
+module top(input clk, input a, output reg q);
+	always @(posedge clk) begin
+		q <= a;
+		if (a) begin
+			$display("a went high");
+			$finish;
+		end
+		if (q)
+			$stop;
+	end
+endmodule
+EOF
+proc
+select -assert-count 1 t:$dff
