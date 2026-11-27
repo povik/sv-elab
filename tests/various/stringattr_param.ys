@@ -1,0 +1,9 @@
+# an attribute whose value is a string parameter stays a string
+read_slang <<EOF
+module top #(parameter GRP = "group_a") (input a, output b);
+	(* my_group = GRP *) wire w;
+	assign w = a;
+	assign b = w;
+endmodule
+EOF
+select -assert-count 1 top/w:w a:my_group=group_a %i

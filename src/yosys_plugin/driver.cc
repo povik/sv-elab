@@ -168,21 +168,41 @@ const std::optional<RTLIL::Const> convert_const_rtlil(
 	log_abort();
 }
 
+// scope: where the attribute's owner lives (to resolve a parameter name), if known
 std::optional<RTLIL::Const> convert_attr_value(
-		NetlistContext &netlist, const ast::AttributeSymbol *symbol)
+		NetlistContext &netlist, const ast::AttributeSymbol *symbol, const ast::Scope *scope = nullptr)
 {
 	auto value = convert_const_rtlil(netlist, symbol->getValue(), symbol->location);
 	if (value) {
 		// slang converts string literals to integer constants per the spec;
 		// we need to look at the syntax tree to recover the information
 		if (symbol->getSyntax() && symbol->getSyntax()->kind == syntax::SyntaxKind::AttributeSpec &&
-				symbol->getSyntax()->template as<syntax::AttributeSpecSyntax>().value &&
-				symbol->getSyntax()->template as<syntax::AttributeSpecSyntax>().value->expr->kind ==
-						syntax::SyntaxKind::StringLiteralExpression) {
-			value->flags |= RTLIL::CONST_FLAG_STRING;
+				symbol->getSyntax()->template as<syntax::AttributeSpecSyntax>().value) {
+			auto &spec = symbol->getSyntax()->template as<syntax::AttributeSpecSyntax>();
+			auto &expr = *spec.value->expr;
+			if (expr.kind == syntax::SyntaxKind::StringLiteralExpression) {
+				value->flags |= RTLIL::CONST_FLAG_STRING;
+			} else if (expr.kind == syntax::SyntaxKind::IdentifierName && scope) {
+				// (* IODELAY_GROUP = IO_DELAY_GROUP *): a parameter holding a
+				// string is just as much a string as the literal it came from
+				auto name = expr.as<syntax::IdentifierNameSyntax>().identifier.valueText();
+				auto found = ast::Lookup::unqualified(*scope, name);
+				if (found && found->kind == ast::SymbolKind::Parameter &&
+						found->as<ast::ParameterSymbol>().isImplicitString(expr.sourceRange()) &&
+						value->size() % 8 == 0)
+					value->flags |= RTLIL::CONST_FLAG_STRING;
+			}
 		}
 	}
 	return value;
+}
+
+template <typename T> const ast::Scope *attr_owner_scope(T &from)
+{
+	if constexpr (std::is_base_of_v<ast::Symbol, std::remove_cv_t<T>>)
+		return from.getParentScope();
+	else
+		return nullptr;
 }
 
 template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTLIL::AttrObject *to)
@@ -192,7 +212,7 @@ template <typename T> void transfer_attrs1(NetlistContext &netlist, T &from, RTL
 		to->attributes[ID::src] = src;
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
-		if (auto value = convert_attr_value(netlist, attr)) {
+		if (auto value = convert_attr_value(netlist, attr, attr_owner_scope(from))) {
 			to->attributes[intern_id(netlist.backend->canvas, rtlil_id(attr->name))] = *value;
 		}
 	}
@@ -202,7 +222,7 @@ template <typename T> void transfer_attrs2(NetlistContext &netlist, T &from, Att
 	guard.set_source(source_location(from));
 
 	for (auto attr : netlist.compilation.getAttributes(from)) {
-		if (auto value = convert_attr_value(netlist, attr)) {
+		if (auto value = convert_attr_value(netlist, attr, attr_owner_scope(from))) {
 			guard.set(intern_id(netlist.backend->canvas, rtlil_id(attr->name)), *value);
 		}
 	}
