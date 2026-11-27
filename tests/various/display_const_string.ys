@@ -1,0 +1,10 @@
+# a constant string argument of $display ($sformatf over parameters) is printed as a string
+read_slang <<EOF
+module top #(parameter int W = 8) (output reg x);
+	initial begin
+		$display("loading %s", $sformatf("tbl_%0d.mem", W));
+		x = 1'b1;
+	end
+endmodule
+EOF
+select -assert-count 1 t:$print

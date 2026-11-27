@@ -1265,6 +1265,17 @@ void handle_display([[maybe_unused]] ProceduralContext &context, [[maybe_unused]
 				[[fallthrough]];
 			}
 		default:
+			// A string-typed argument with a constant value (e.g. $sformatf over
+			// parameters) has no fixed width as a signal; print it as a string.
+			if (arg->type->isString()) {
+				auto cv = arg->eval(context.eval.const_);
+				if (cv && cv.isString()) {
+					fmt_arg.type = Yosys::VerilogFmtArg::STRING;
+					fmt_arg.str = cv.str();
+					fmt_arg.sig = {};
+					break;
+				}
+			}
 			fmt_arg.type = Yosys::VerilogFmtArg::INTEGER;
 			fmt_arg.sig = context.eval(*arg);
 			fmt_arg.signed_ = arg->type->isSigned();

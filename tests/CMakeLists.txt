@@ -87,6 +87,7 @@ set(ALL_TESTS
     various/expect_test.ys
     various/program_test.ys
     various/synthesis_define.ys
+    various/display_const_string.ys
 )
 
 foreach(test_script ${ALL_TESTS})
