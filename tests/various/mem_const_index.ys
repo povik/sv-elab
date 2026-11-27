@@ -1,0 +1,21 @@
+# arrays indexed only by constants are registers, not memories (unless hinted)
+read_slang <<EOF
+module top(input clk, input [1:0] a, input [7:0] d, output [7:0] q0, output [7:0] q1, output [7:0] q2);
+	reg [7:0] regs [2];
+	reg [7:0] ram [4];
+	(* ram_style = "distributed" *) reg [7:0] hinted [2];
+	always @(posedge clk) begin
+		regs[0] <= d;
+		regs[1] <= regs[0];
+		ram[a] <= d;
+		hinted[0] <= d;
+		hinted[1] <= hinted[0];
+	end
+	assign q0 = regs[1];
+	assign q1 = ram[a];
+	assign q2 = hinted[1];
+endmodule
+EOF
+select -assert-count 1 top/m:ram
+select -assert-count 1 top/m:hinted
+select -assert-none top/m:regs

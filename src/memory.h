@@ -34,13 +34,15 @@ struct InferredMemoryDetector : public TimingPatternInterpretor,
 	hashlib::pool<const ast::Symbol *> memory_candidates;
 	std::function<bool(const ast::InstanceSymbol &sym)> should_dissolve;
 	bool disallow_implicit = false;
+	EvalContext &index_eval;
 
 	InferredMemoryDetector(NetlistContext &netlist, SynthesisSettings &settings,
 			std::function<bool(const ast::InstanceSymbol &sym)> should_dissolve,
 			EvalContext &evalCtx)
 		: TimingPatternInterpretor(settings, (DiagnosticIssuer &)netlist, evalCtx),
 		  netlist(netlist), should_dissolve(should_dissolve),
-		  disallow_implicit(settings.no_implicit_memories.value_or(false))
+		  disallow_implicit(settings.no_implicit_memories.value_or(false)),
+		  index_eval(evalCtx)
 	{}
 
 	void process(const ast::Symbol &root)
@@ -69,6 +71,30 @@ struct InferredMemoryDetector : public TimingPatternInterpretor,
 				});
 		root.visit(first_pass);
 		root.visit(*this);
+
+		// An array only ever indexed by constants (e.g. one word per generate
+		// iteration) is a bundle of registers: there is no address to decode,
+		// and as a memory its words can no longer be the output register of
+		// another RAM's read port. Keep it a memory only on a user hint.
+		std::vector<const ast::Symbol *> constant_indexed;
+		for (auto symbol : memory_candidates)
+			if (!variable_indexed.count(symbol) && !find_user_hint(*symbol))
+				constant_indexed.push_back(symbol);
+		for (auto symbol : constant_indexed)
+			memory_candidates.erase(symbol);
+	}
+
+	hashlib::pool<const ast::Symbol *> variable_indexed;
+
+	void note_select(const ast::ElementSelectExpression &sel)
+	{
+		if (!ast::ValueExpressionBase::isKind(sel.value().kind))
+			return;
+		const ast::Symbol &symbol = sel.value().as<ast::ValueExpressionBase>().symbol;
+		if (!memory_candidates.count(&symbol) || variable_indexed.count(&symbol))
+			return;
+		if (!sel.selector().eval(index_eval.const_))
+			variable_indexed.insert(&symbol);
 	}
 
 	struct LHSVisitor : public ast::ASTVisitor<LHSVisitor,
@@ -142,7 +168,7 @@ struct InferredMemoryDetector : public TimingPatternInterpretor,
 	void handle(const ast::ElementSelectExpression &expr)
 	{
 		if (ast::ValueExpressionBase::isKind(expr.value().kind)) {
-			// do nothing
+			note_select(expr);
 		} else {
 			expr.value().visit(*this);
 		}
@@ -175,6 +201,7 @@ struct InferredMemoryDetector : public TimingPatternInterpretor,
 					raw_lexpr = &sel.value();
 					if (ast::ValueExpressionBase::isKind(sel.value().kind)) {
 						// a potential memory candidate
+						note_select(sel);
 						return;
 					}
 				} break;
