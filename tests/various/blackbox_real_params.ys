@@ -1,0 +1,10 @@
+# real-valued parameters of black boxes are passed on as decimal strings
+read_slang --blackboxed-module bb <<EOF
+module bb #(parameter real FREQ = 200.0, parameter integer N = 1) (input i, output o);
+endmodule
+module top(input i, output o);
+	bb #(.FREQ(125.5)) u (.i(i), .o(o));
+endmodule
+EOF
+select -assert-count 1 top/t:bb r:FREQ=125.500000 %i
+select -assert-count 1 top/t:bb r:N=1 %i

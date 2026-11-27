@@ -87,6 +87,7 @@ set(ALL_TESTS
     various/expect_test.ys
     various/program_test.ys
     various/synthesis_define.ys
+    various/blackbox_real_params.ys
 )
 
 foreach(test_script ${ALL_TESTS})

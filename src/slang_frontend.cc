@@ -2508,7 +2508,19 @@ public:
 						if (symbol.isLocalParam())
 							return;
 
-						auto converted = netlist.convert_const(symbol.getValue(), symbol.location);
+						const auto &value = symbol.getValue();
+						if (value.isReal() || value.isShortReal()) {
+							// real parameters of black boxes (e.g. REFCLK_FREQUENCY) go out
+							// as decimal strings, as the Yosys Verilog frontend does
+							char buf[64];
+							snprintf(buf, sizeof(buf), "%.6f", value.isReal() ? (double)value.real()
+																			  : (double)value.shortReal());
+							auto converted = netlist.convert_const(slang::ConstantValue(std::string(buf)), symbol.location);
+							if (converted)
+								params.push_back({std::string(symbol.name), *converted, true});
+							return;
+						}
+						auto converted = netlist.convert_const(value, symbol.location);
 						if (converted) {
 							params.push_back({std::string(symbol.name), *converted,
 									(symbol.isImplicitString(
