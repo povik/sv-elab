@@ -2251,8 +2251,60 @@ public:
 		}
 	}
 
+	// An initial block that only checks parameters and reports (if/case/loops around
+	// $display/$error/$finish, as in elaboration-time sanity checks) cannot affect the
+	// netlist: skip it, as other synthesis tools do. Anything else -- assignments,
+	// $readmem, timing controls, fork/join, forever -- takes the normal path.
+	static bool is_simulation_check(const ast::Statement &stmt)
+	{
+		switch (stmt.kind) {
+		case ast::StatementKind::Empty:
+		case ast::StatementKind::VariableDeclaration:
+			return true;
+		case ast::StatementKind::List:
+			for (auto s : stmt.as<ast::StatementList>().list)
+				if (!is_simulation_check(*s))
+					return false;
+			return true;
+		case ast::StatementKind::Block: {
+			auto &block = stmt.as<ast::BlockStatement>();
+			return block.blockKind == ast::StatementBlockKind::Sequential &&
+				   is_simulation_check(block.body);
+		}
+		case ast::StatementKind::Conditional: {
+			auto &cond = stmt.as<ast::ConditionalStatement>();
+			return is_simulation_check(cond.ifTrue) &&
+				   (!cond.ifFalse || is_simulation_check(*cond.ifFalse));
+		}
+		case ast::StatementKind::Case: {
+			auto &cs = stmt.as<ast::CaseStatement>();
+			for (auto &item : cs.items)
+				if (!is_simulation_check(*item.stmt))
+					return false;
+			return !cs.defaultCase || is_simulation_check(*cs.defaultCase);
+		}
+		case ast::StatementKind::ForLoop:
+			return is_simulation_check(stmt.as<ast::ForLoopStatement>().body);
+		case ast::StatementKind::RepeatLoop:
+			return is_simulation_check(stmt.as<ast::RepeatLoopStatement>().body);
+		case ast::StatementKind::ExpressionStatement: {
+			auto &expr = stmt.as<ast::ExpressionStatement>().expr;
+			if (expr.kind != ast::ExpressionKind::Call)
+				return false;
+			auto &call = expr.as<ast::CallExpression>();
+			static const std::set<std::string_view> tasks = {"$display", "$write", "$info",
+					"$warning", "$error", "$fatal", "$finish", "$stop"};
+			return call.isSystemCall() && tasks.count(call.getSubroutineName());
+		}
+		default:
+			return false;
+		}
+	}
+
 	void handle_initial_process(const ast::ProceduralBlockSymbol &, const ast::Statement &body) {
 		if (settings.ignore_initial.value_or(false))
+			return;
+		if (is_simulation_check(body))
 			return;
 
 		ProceduralContext procedure(netlist, ProcessTiming::initial);

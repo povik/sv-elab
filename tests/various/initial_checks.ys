@@ -1,0 +1,20 @@
+# An initial block that only checks parameters and reports is skipped, even when
+# the checks need constructs the netlist evaluator lacks (here: reals)
+read_slang <<EOF
+module top #(parameter W = 8) (input [W-1:0] a, output [W-1:0] y);
+	function automatic real ratio(input int x);
+		return real'(x) / 3.0;
+	endfunction
+	initial begin
+		if (W % 2 != 0) begin
+			$error("W must be even");
+			$finish;
+		end
+		for (int i = 0; i < 4; i++)
+			if (ratio(i) > 100.0)
+				$display("unexpected %0d", i);
+	end
+	assign y = a;
+endmodule
+EOF
+select -assert-none t:$print
