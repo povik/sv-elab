@@ -2251,8 +2251,100 @@ public:
 		}
 	}
 
-	void handle_initial_process(const ast::ProceduralBlockSymbol &, const ast::Statement &body) {
+	// Any real/shortreal-typed expression (the netlist evaluator has no reals), and
+	// any $readmem (which slang's constant evaluator does not implement).
+	struct RealValueDetector : public ast::ASTVisitor<RealValueDetector,
+			ast::VisitFlags::Statements | ast::VisitFlags::Expressions> {
+		bool found = false;
+		bool readmem = false;
+		template <typename T>
+			requires std::is_base_of_v<ast::Expression, T>
+		void handle(const T &expr) {
+			if (expr.type && expr.type->isFloating())
+				found = true;
+			if constexpr (std::is_same_v<T, ast::CallExpression>) {
+				if (expr.isSystemCall() && (expr.getSubroutineName() == "$readmemh" ||
+												   expr.getSubroutineName() == "$readmemb"))
+					readmem = true;
+			}
+			this->visitDefault(expr);
+		}
+	};
+
+	// Static variables declared outside the block that the block assigns to.
+	struct AssignedOuterVariables : public ast::ASTVisitor<AssignedOuterVariables,
+			ast::VisitFlags::Statements | ast::VisitFlags::Expressions> {
+		std::vector<const ast::VariableSymbol *> vars;
+		hashlib::pool<const ast::VariableSymbol *> seen;
+		void handle(const ast::AssignmentExpression &assign) {
+			const ast::Expression *e = &assign.left();
+			while (true) {
+				if (e->kind == ast::ExpressionKind::ElementSelect)
+					e = &e->as<ast::ElementSelectExpression>().value();
+				else if (e->kind == ast::ExpressionKind::RangeSelect)
+					e = &e->as<ast::RangeSelectExpression>().value();
+				else if (e->kind == ast::ExpressionKind::MemberAccess)
+					e = &e->as<ast::MemberAccessExpression>().value();
+				else
+					break;
+			}
+			if (ast::ValueExpressionBase::isKind(e->kind)) {
+				auto &sym = e->as<ast::ValueExpressionBase>().symbol;
+				if (ast::VariableSymbol::isKind(sym.kind)) {
+					auto &var = sym.as<ast::VariableSymbol>();
+					auto *scope = var.getParentScope();
+					bool block_local = scope && scope->asSymbol().kind == ast::SymbolKind::StatementBlock;
+					if (var.lifetime == ast::VariableLifetime::Static && !block_local && !seen.count(&var)) {
+						seen.insert(&var);
+						vars.push_back(&var);
+					}
+				}
+			}
+			visitDefault(assign);
+		}
+	};
+
+	// An initial block computing a table with real math ($sin, $rtoi, real'()):
+	// run it through slang's constant evaluator (which has reals) and take the
+	// final values of the variables it assigns as their initial values.
+	bool initial_via_const_eval(const ast::ProceduralBlockSymbol &symbol, const ast::Statement &body)
+	{
+		RealValueDetector reals;
+		body.visit(reals);
+		if (!reals.found || reals.readmem || !symbol.getParentScope())
+			return false;
+
+		AssignedOuterVariables assigned;
+		body.visit(assigned);
+
+		ast::ASTContext astctx(*symbol.getParentScope(), ast::LookupLocation::max);
+		ast::EvalContext ctx(astctx, ast::EvalFlags::IsScript);
+		ctx.pushEmptyFrame();
+		for (auto var : assigned.vars) {
+			slang::ConstantValue init = var->getInitializer() ? var->getInitializer()->eval(ctx)
+															  : var->getType().getDefaultValue();
+			ctx.createLocal(var, std::move(init));
+		}
+		if (body.eval(ctx) == ast::Statement::EvalResult::Fail)
+			return false;
+
+		for (auto var : assigned.vars) {
+			auto *cv = ctx.findLocal(var);
+			if (!cv)
+				continue;
+			auto converted = netlist.convert_const(*cv, var->location);
+			if (!converted)
+				continue;
+			ProceduralContext context(netlist, ProcessTiming::initial);
+			context.do_simple_assign(var->location, context.eval.variable(*var), *converted, true);
+		}
+		return true;
+	}
+
+	void handle_initial_process(const ast::ProceduralBlockSymbol &symbol, const ast::Statement &body) {
 		if (settings.ignore_initial.value_or(false))
+			return;
+		if (initial_via_const_eval(symbol, body))
 			return;
 
 		ProceduralContext procedure(netlist, ProcessTiming::initial);

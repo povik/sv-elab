@@ -1,0 +1,17 @@
+# an initial block computing a table with real arithmetic is evaluated by slang
+read_slang <<EOF
+module top(input [3:0] a, output [7:0] y);
+	logic [7:0] lut [16];
+	initial
+		for (int i = 0; i < 16; i++)
+			lut[i] = $rtoi($sin(3.141592653589793 / 2.0 * i / 16) * 255.0 + 0.5);
+	assign y = lut[a];
+endmodule
+EOF
+proc
+memory_collect
+memory_map
+opt
+sat -verify -set a 0 -prove y 0
+sat -verify -set a 8 -prove y 180
+sat -verify -set a 15 -prove y 254
